@@ -1,474 +1,214 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>⚽ BettingEdge Pro</title>
-<style>
-  :root{--bg:#0d1117;--card:#161b22;--card2:#1c2128;--border:#30363d;--green:#2ea043;--green-light:#56d364;--yellow:#d29922;--yellow-light:#e3b341;--red:#da3633;--red-light:#f85149;--blue:#1f6feb;--blue-light:#58a6ff;--purple:#6e40c9;--purple-light:#a371f7;--text:#e6edf3;--text-muted:#8b949e;}
-  *{margin:0;padding:0;box-sizing:border-box;}
-  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;}
-  .header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;}
-  .header h1{font-size:1.2rem;font-weight:700;color:var(--green-light);}
-  .header .sub{color:var(--text-muted);font-size:.8rem;}
-  .date-btns{display:flex;gap:6px;margin-left:auto;align-items:center;}
-  .date-btn{background:var(--card2);border:1px solid var(--border);color:var(--text);padding:5px 14px;border-radius:6px;cursor:pointer;font-size:.82rem;transition:.15s;}
-  .date-btn.active{background:var(--blue);border-color:var(--blue-light);color:#fff;}
-  .layout{display:grid;grid-template-columns:270px 1fr;height:calc(100vh - 57px);}
-  .sidebar{background:var(--card);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;}
-  .search-wrap{padding:8px 10px;border-bottom:1px solid var(--border);}
-  .search-wrap input{width:100%;background:var(--card2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:.82rem;outline:none;}
-  .search-wrap input:focus{border-color:var(--blue-light);}
-  .match-list{flex:1;overflow-y:auto;}
-  .lg-title{padding:8px 10px 4px;font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.08em;background:var(--bg);}
-  .match-item{padding:9px 10px;cursor:pointer;border-left:3px solid transparent;display:grid;grid-template-columns:1fr auto;gap:4px;transition:.1s;}
-  .match-item:hover{background:var(--card2);}
-  .match-item.active{background:var(--card2);border-left-color:var(--blue-light);}
-  .m-teams{font-size:.8rem;font-weight:600;}
-  .m-lg{font-size:.7rem;color:var(--text-muted);margin-top:2px;}
-  .m-time{font-size:.73rem;color:var(--yellow-light);font-weight:700;}
-  .live-dot{display:inline-block;width:6px;height:6px;background:var(--red-light);border-radius:50%;margin-right:3px;animation:pulse 1s infinite;}
-  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
-  .main{overflow-y:auto;}
-  .welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:var(--text-muted);}
-  .welcome .ico{font-size:3.5rem;}
-  .welcome h2{color:var(--text);font-size:1.1rem;}
-  .welcome p{font-size:.85rem;text-align:center;max-width:380px;}
-  .mdetail{padding:16px;}
-  .mheader{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:14px;text-align:center;}
-  .mteams{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:10px;}
-  .tname{font-size:1rem;font-weight:700;width:150px;text-align:center;}
-  .vs{color:var(--text-muted);font-size:.85rem;}
-  .mmeta{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;}
-  .pill{background:var(--card2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:.75rem;color:var(--text-muted);}
-  .pill span{color:var(--text);font-weight:600;}
-  .tabs{display:flex;gap:0;margin-bottom:14px;border-bottom:1px solid var(--border);}
-  .tab{padding:7px 14px;cursor:pointer;font-size:.82rem;color:var(--text-muted);border-bottom:2px solid transparent;margin-bottom:-1px;transition:.1s;}
-  .tab.active{color:var(--blue-light);border-bottom-color:var(--blue-light);font-weight:600;}
-  .tc{display:none;}
-  .tc.active{display:block;}
-  .sgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
-  .scard{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;}
-  .scard.full{grid-column:1/-1;}
-  .scard h3{font-size:.72rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em;margin-bottom:10px;}
-  .vrow{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
-  .vlabel{font-size:.78rem;color:var(--text-muted);width:110px;}
-  .vbar{flex:1;height:5px;background:var(--card2);border-radius:3px;overflow:hidden;}
-  .vfill{height:100%;border-radius:3px;transition:width .5s;}
-  .vpct{font-size:.75rem;font-weight:700;width:32px;text-align:right;}
-  .c-green{color:var(--green-light);}.c-yellow{color:var(--yellow-light);}.c-red{color:var(--red-light);}.c-blue{color:var(--blue-light);}.c-purple{color:var(--purple-light);}
-  .form-dots{display:flex;gap:3px;flex-wrap:wrap;margin-top:8px;}
-  .fd-dot{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;}
-  .fw{background:rgba(46,160,67,.25);color:var(--green-light);border:1px solid var(--green);}
-  .fdraw{background:rgba(210,153,34,.25);color:var(--yellow-light);border:1px solid var(--yellow);}
-  .fl{background:rgba(218,54,51,.25);color:var(--red-light);border:1px solid var(--red);}
-  .reco-box{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px;}
-  .reco-title{font-size:.7rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:.06em;margin-bottom:8px;}
-  .ri{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:6px;margin-bottom:5px;border:1px solid transparent;font-size:.8rem;}
-  .ri.val{background:rgba(46,160,67,.1);border-color:var(--green);}
-  .ri.warn{background:rgba(210,153,34,.1);border-color:var(--yellow);}
-  .ri.bad{background:rgba(218,54,51,.1);border-color:var(--red);}
-  .ri-note{margin-left:auto;font-size:.7rem;font-weight:700;color:var(--text-muted);}
-  .total-box{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
-  .tbox{background:var(--card2);border-radius:8px;padding:12px;text-align:center;}
-  .tval{font-size:1.5rem;font-weight:800;}
-  .tlabel{font-size:.72rem;color:var(--text-muted);margin-top:3px;}
-  .tbadge{margin-top:6px;padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:700;display:inline-block;}
-  .bg-green{background:rgba(46,160,67,.2);color:var(--green-light);border:1px solid var(--green);}
-  .bg-yellow{background:rgba(210,153,34,.2);color:var(--yellow-light);border:1px solid var(--yellow);}
-  .bg-red{background:rgba(218,54,51,.2);color:var(--red-light);border:1px solid var(--red);}
-  .tcomp{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-  .tteam{background:var(--card2);border-radius:6px;padding:10px;}
-  .tteam h4{font-size:.75rem;color:var(--text-muted);margin-bottom:8px;text-align:center;}
-  .srow{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:.78rem;}
-  .srow:last-child{border:none;}
-  .sname{color:var(--text-muted);}
-  .lineup-wrap{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-  .lteam{background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
-  .lteam h3{padding:8px 12px;font-size:.78rem;background:var(--card2);border-bottom:1px solid var(--border);color:var(--text-muted);}
-  .prow{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);font-size:.78rem;}
-  .prow:last-child{border:none;}
-  .pnum{width:20px;height:20px;border-radius:50%;background:var(--blue);color:#fff;font-size:.65rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-  .ppos{font-size:.65rem;color:var(--text-muted);background:var(--card2);padding:1px 4px;border-radius:3px;margin-left:auto;}
-  .h2h-list{display:flex;flex-direction:column;gap:5px;}
-  .h2h-item{background:var(--card2);border-radius:6px;padding:9px 12px;display:grid;grid-template-columns:90px 1fr 90px;align-items:center;gap:6px;font-size:.78rem;}
-  .h2h-score{text-align:center;font-weight:700;font-size:.9rem;}
-  .loading{display:flex;align-items:center;justify-content:center;padding:40px;gap:10px;color:var(--text-muted);font-size:.85rem;}
-  .spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--blue-light);border-radius:50%;animation:spin .8s linear infinite;}
-  @keyframes spin{to{transform:rotate(360deg);}}
-  .no-data{padding:32px;text-align:center;color:var(--text-muted);font-size:.85rem;}
-  .debug-box{background:rgba(218,54,51,.1);border:1px solid var(--red);border-radius:8px;padding:12px;margin:10px;font-size:.75rem;color:var(--red-light);}
-  ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:var(--bg);}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Predictor de Partidos</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f0f1a;
+      color: #e0e0f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 8px;
+      background: linear-gradient(90deg, #7f5af0, #2cb67d);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle { color: #888; margin-bottom: 40px; font-size: 0.9rem; }
+    .card {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 16px;
+      padding: 32px;
+      width: 100%;
+      max-width: 640px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    label {
+      font-size: 0.8rem;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+      display: block;
+    }
+    select {
+      width: 100%;
+      padding: 12px 16px;
+      background: #0f0f1a;
+      border: 1px solid #3a3a5c;
+      border-radius: 10px;
+      color: #e0e0f0;
+      font-size: 1rem;
+      appearance: none;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    select:focus { outline: none; border-color: #7f5af0; }
+    select:disabled { opacity: 0.4; cursor: not-allowed; }
+    .select-wrapper { position: relative; }
+    .select-wrapper::after {
+      content: '▾';
+      position: absolute;
+      right: 14px; top: 50%;
+      transform: translateY(-50%);
+      color: #7f5af0;
+      pointer-events: none;
+    }
+    .teams-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    button#predictBtn {
+      padding: 14px;
+      background: linear-gradient(135deg, #7f5af0, #2cb67d);
+      border: none; border-radius: 10px;
+      color: white; font-size: 1rem; font-weight: 600;
+      cursor: pointer; transition: opacity 0.2s, transform 0.1s;
+    }
+    button#predictBtn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+    button#predictBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Resultado odds ── */
+    #result {
+      display: none;
+      background: #0f0f1a;
+      border: 1px solid #3a3a5c;
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+    }
+    #result .winner { font-size: 1.6rem; font-weight: 700; color: #2cb67d; margin-bottom: 8px; }
+    .prob-row { display: flex; justify-content: space-between; margin-top: 16px; gap: 12px; }
+    .prob-box {
+      flex: 1; background: #1a1a2e;
+      border-radius: 10px; padding: 14px;
+      border: 1px solid #2a2a4a;
+    }
+    .prob-box.highlight { border-color: #2cb67d; }
+    .prob-box .team-name { font-size: 0.85rem; color: #aaa; margin-bottom: 4px; }
+    .prob-box .pct { font-size: 1.5rem; font-weight: 700; color: #e0e0f0; }
+    .prob-box.highlight .pct { color: #2cb67d; }
+    .bar-wrap { background: #2a2a4a; border-radius: 999px; height: 8px; margin-top: 16px; overflow: hidden; }
+    .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #7f5af0, #2cb67d);
+      border-radius: 999px;
+      transition: width 0.6s ease;
+    }
+
+    /* ── Panel ESPN ── */
+    #espnPanel {
+      display: none;
+      gap: 16px;
+      flex-direction: column;
+    }
+    .espn-teams-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .team-card {
+      background: #0f0f1a;
+      border: 1px solid #2a2a4a;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .team-card h3 {
+      font-size: 0.95rem;
+      color: #7f5af0;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .team-card img.team-logo {
+      width: 28px; height: 28px;
+      object-fit: contain;
+    }
+    .form-row {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .form-badge {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem; font-weight: 700;
+    }
+    .form-badge.W { background: #2cb67d22; color: #2cb67d; border: 1px solid #2cb67d; }
+    .form-badge.L { background: #ff6b6b22; color: #ff6b6b; border: 1px solid #ff6b6b; }
+    .form-badge.D { background: #ffd70022; color: #ffd700; border: 1px solid #ffd700; }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: #aaa;
+      padding: 4px 0;
+      border-bottom: 1px solid #1a1a2e;
+    }
+    .stat-row span:last-child { color: #e0e0f0; font-weight: 600; }
+    .injury-list { margin-top: 10px; }
+    .injury-item {
+      font-size: 0.78rem;
+      color: #ff6b6b;
+      padding: 3px 0;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .injury-item::before { content: '🏥'; font-size: 0.7rem; }
+    .no-injuries { font-size: 0.78rem; color: #2cb67d; }
+    .section-title {
+      font-size: 0.7rem;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin: 8px 0 4px;
+    }
+    .espn-loader {
+      text-align: center;
+      color: #555;
+      font-size: 0.85rem;
+      padding: 12px;
+    }
+
+    /* ── Util ── */
+    #error { color: #ff6b6b; font-size: 0.85rem; text-align: center; display: none; }
+    .loader {
+      border: 3px solid #2a2a4a;
+      border-top-color: #7f5af0;
+      border-radius: 50%;
+      width: 28px; height: 28px;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto; display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .quota { font-size: 0.75rem; color: #555; text-align: right; }
+  </style>
 </head>
 <body>
-<div class="header">
+
+<h1>⚽🏀⚾ Predictor de Partidos</h1>
+<p class="subtitle">Odds en tiempo real + estado del equipo vía ESPN</p>
+
+<div class="card">
+
   <div>
-    <div style="display:flex;align-items:center;gap:8px;">
-      <h1>⚽ BettingEdge Pro</h1>
-      <span id="apiStatus" style="font-size:.7rem;padding:2px 8px;border-radius:10px;background:rgba(210,153,34,.15);color:var(--yellow-light);border:1px solid var(--yellow);">● Conectando...</span>
-    </div>
-    <div class="sub">Corners · Tarjetas · Goles — Avg últimos 10 partidos por equipo</div>
-  </div>
-  <div class="date-btns">
-    <button class="date-btn active" id="btnT" onclick="setDay(0)">Hoy</button>
-    <button class="date-btn" id="btnM" onclick="setDay(1)">Mañana</button>
-  </div>
-</div>
-
-<div class="layout">
-  <div class="sidebar">
-    <div class="search-wrap">
-      <input type="text" id="searchInput" placeholder="🔍 Buscar equipo o liga..." oninput="filterMatches()">
-    </div>
-    <div class="match-list" id="matchList">
-      <div class="loading"><div class="spinner"></div> Cargando...</div>
-    </div>
-  </div>
-  <div class="main" id="main">
-    <div class="welcome" id="welcome">
-      <div class="ico">⚽</div>
-      <h2>Selecciona un partido</h2>
-      <p>Corners, tarjetas y goles — avg de cada equipo en los últimos 10 partidos comparados entre sí.</p>
-    </div>
-    <div id="mdetail" style="display:none;"></div>
-  </div>
-</div>
-
-<script>
-const API_KEY = '09ee8ca7bbb9485ca2200028df5f958c';
-let currentDay = 0;
-let allMatches = [];
-
-// Detect if we're on Netlify (has functions) or local
-const IS_NETLIFY = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !window.location.protocol.startsWith('file');
-const PROXY = IS_NETLIFY ? '/.netlify/functions/api' : null;
-
-console.log('Running on:', window.location.hostname, '| Using proxy:', IS_NETLIFY);
-
-const LEAGUES = {
-  '🏴 Top 5 Europa':[{id:39,n:'Premier League 🏴'},{id:140,n:'La Liga 🇪🇸'},{id:78,n:'Bundesliga 🇩🇪'},{id:135,n:'Serie A 🇮🇹'},{id:61,n:'Ligue 1 🇫🇷'}],
-  '🥈 2das Divisiones':[{id:40,n:'Championship 🏴'},{id:141,n:'Segunda 🇪🇸'},{id:79,n:'2.Bundesliga 🇩🇪'},{id:136,n:'Serie B 🇮🇹'},{id:62,n:'Ligue 2 🇫🇷'}],
-  '🌍 Otras Europeas':[{id:94,n:'Primeira Liga 🇵🇹'},{id:88,n:'Eredivisie 🇳🇱'},{id:144,n:'Jupiler 🇧🇪'},{id:203,n:'Süper Lig 🇹🇷'},{id:197,n:'Super League 🇨🇭'},{id:106,n:'Ekstraklasa 🇵🇱'}],
-  '🏆 Copas Europa':[{id:2,n:'Champions League'},{id:3,n:'Europa League'},{id:848,n:'Conference League'}],
-  '🌎 América':[{id:253,n:'MLS 🇺🇸'},{id:128,n:'Liga Profesional 🇦🇷'},{id:262,n:'Liga MX 🇲🇽'},{id:239,n:'LPF Panamá 🇵🇦'},{id:261,n:'Liga BetPlay 🇨🇴'}],
-  '🌏 Arabia Saudita':[{id:307,n:'Saudi Pro League 🇸🇦'}]
-};
-const ALL_IDS = Object.values(LEAGUES).flat().map(l=>l.id);
-
-function getDate(offset=0){
-  const d=new Date(); d.setDate(d.getDate()+offset);
-  return d.toISOString().split('T')[0];
-}
-
-async function api(path, params={}){
-  try {
-    let url, opts;
-    if(IS_NETLIFY){
-      // Use Netlify proxy
-      const qs = new URLSearchParams({path, ...params}).toString();
-      url = `${PROXY}?${qs}`;
-      opts = {};
-    } else {
-      // Direct call (local dev only — will fail on CORS in browser)
-      const qs = new URLSearchParams(params).toString();
-      url = `https://v3.football.api-sports.io${path}${qs?'?'+qs:''}`;
-      opts = { headers: {'x-apisports-key': API_KEY} };
-    }
-    const r = await fetch(url, opts);
-    if(!r.ok){ console.warn('HTTP', r.status, url); return []; }
-    const j = await r.json();
-    if(j.errors && Object.keys(j.errors).length){
-      console.warn('API error:', JSON.stringify(j.errors));
-      return [];
-    }
-    return j.response || [];
-  } catch(e){
-    console.error('Fetch error:', e.message, path);
-    return [];
-  }
-}
-
-// Test API connection
-async function testConnection(){
-  const statusEl = document.getElementById('apiStatus');
-  statusEl.textContent = '● Conectando...';
-  statusEl.style.color = 'var(--yellow-light)';
-  statusEl.style.borderColor = 'var(--yellow)';
-
-  const res = await api('/status');
-  console.log('API status check:', res);
-
-  if(res && (res.account || res.requests)){
-    const rem = res.requests?.current ?? '?';
-    const lim = res.requests?.limit_day ?? 100;
-    statusEl.textContent = `● API OK (${rem}/${lim} hoy)`;
-    statusEl.style.color = 'var(--green-light)';
-    statusEl.style.borderColor = 'var(--green)';
-    return true;
-  } else {
-    statusEl.textContent = '● Error API';
-    statusEl.style.color = 'var(--red-light)';
-    statusEl.style.borderColor = 'var(--red)';
-    return false;
-  }
-}
-
-async function loadMatches(){
-  document.getElementById('matchList').innerHTML = '<div class="loading"><div class="spinner"></div> Cargando partidos...</div>';
-  const date = getDate(currentDay);
-
-  // Try current season first (2025), fallback to 2024
-  const seasons = [2025, 2024];
-  let found = [];
-
-  for(const season of seasons){
-    if(found.length > 0) break;
-    console.log(`Trying season ${season} for date ${date}`);
-
-    // Load in batches of 4 to avoid overwhelming API
-    const batches = [];
-    for(let i=0;i<ALL_IDS.length;i+=4) batches.push(ALL_IDS.slice(i,i+4));
-
-    const results = [];
-    for(const batch of batches){
-      const proms = batch.map(lid => api('/fixtures', {league:lid, date, season}));
-      const res = await Promise.all(proms);
-      results.push(...res.flat());
-      await new Promise(r => setTimeout(r,200));
-    }
-    found = results.filter(m => m?.fixture?.id);
-    console.log(`Season ${season}: found ${found.length} matches`);
-  }
-
-  allMatches = found.sort((a,b) => new Date(a.fixture.date)-new Date(b.fixture.date));
-
-  const statusEl = document.getElementById('apiStatus');
-  if(allMatches.length > 0){
-    statusEl.textContent = `● ${allMatches.length} partidos`;
-    statusEl.style.color='var(--green-light)'; statusEl.style.borderColor='var(--green)';
-  } else {
-    statusEl.textContent = '● Sin partidos';
-    statusEl.style.color='var(--text-muted)'; statusEl.style.borderColor='var(--border)';
-    document.getElementById('matchList').innerHTML = `
-      <div class="debug-box">
-        <b>⚠️ Sin partidos encontrados</b><br><br>
-        Posibles causas:<br>
-        1. Función Netlify no deployada (revisa Functions tab)<br>
-        2. API key agotada (100 req/día)<br>
-        3. No hay partidos hoy en estas ligas<br><br>
-        Prueba: <a href="/.netlify/functions/api?path=/fixtures&league=39&date=${date}&season=2025" target="_blank" style="color:var(--blue-light)">Verificar función →</a>
-      </div>`;
-    return;
-  }
-  renderList(allMatches);
-}
-
-function getLgInfo(lid){
-  for(const [g,ls] of Object.entries(LEAGUES)){
-    const f=ls.find(l=>l.id===lid);
-    if(f) return {group:g,name:f.n};
-  }
-  return {group:'Otras',name:'Liga'};
-}
-
-function renderList(matches){
-  if(!matches.length){
-    document.getElementById('matchList').innerHTML='<div class="no-data">📭 No hay partidos.</div>';
-    return;
-  }
-  const grouped={};
-  matches.forEach(m=>{
-    const {group}=getLgInfo(m.league.id);
-    if(!grouped[group]) grouped[group]=[];
-    grouped[group].push(m);
-  });
-  let html='';
-  for(const [g,ms] of Object.entries(grouped)){
-    html+=`<div class="lg-title">${g}</div>`;
-    ms.forEach(m=>{
-      const t=new Date(m.fixture.date).toLocaleTimeString('es-PA',{hour:'2-digit',minute:'2-digit',timeZone:'America/Panama'});
-      const st=m.fixture.status.short;
-      const live=['1H','2H','HT','ET','P'].includes(st);
-      html+=`<div class="match-item" id="mi-${m.fixture.id}" onclick="selectMatch(${m.fixture.id},${JSON.stringify(m.teams.home.name)},${JSON.stringify(m.teams.away.name)},${m.teams.home.id},${m.teams.away.id},${JSON.stringify(m.league.name)},${JSON.stringify(t)},${m.league.id})">
-        <div><div class="m-teams">${m.teams.home.name} vs ${m.teams.away.name}</div><div class="m-lg">${m.league.name}</div></div>
-        <div style="text-align:right">${live?`<span class="live-dot"></span><span class="m-time" style="color:var(--red-light)">${m.goals.home??0}-${m.goals.away??0}</span>`:`<div class="m-time">${t}</div>`}</div>
-      </div>`;
-    });
-  }
-  document.getElementById('matchList').innerHTML=html;
-}
-
-function filterMatches(){
-  const q=document.getElementById('searchInput').value.toLowerCase();
-  if(!q){renderList(allMatches);return;}
-  renderList(allMatches.filter(m=>m.teams.home.name.toLowerCase().includes(q)||m.teams.away.name.toLowerCase().includes(q)||m.league.name.toLowerCase().includes(q)));
-}
-
-function setDay(d){
-  currentDay=d;
-  document.getElementById('btnT').classList.toggle('active',d===0);
-  document.getElementById('btnM').classList.toggle('active',d===1);
-  loadMatches();
-  document.getElementById('welcome').style.display='flex';
-  document.getElementById('mdetail').style.display='none';
-}
-
-async function getTeamStats(teamId, leagueId){
-  const seasons=[2025,2024];
-  let fixtures=[];
-  for(const s of seasons){
-    fixtures=await api('/fixtures',{team:teamId,league:leagueId,season:s,last:10});
-    if(fixtures.length) break;
-  }
-  let goals=0,conceded=0,W=0,D=0,L=0,form=[];
-  const fids=[];
-  fixtures.forEach(f=>{
-    const h=f.teams.home.id===teamId;
-    const gF=h?(f.goals.home||0):(f.goals.away||0);
-    const gA=h?(f.goals.away||0):(f.goals.home||0);
-    goals+=gF; conceded+=gA;
-    if(gF>gA){W++;form.push('W');}else if(gF===gA){D++;form.push('D');}else{L++;form.push('L');}
-    fids.push(f.fixture.id);
-  });
-  let corners=0,cards=0,shots=0,sc=0;
-  const sr=await Promise.all(fids.slice(0,5).map(id=>api('/fixtures/statistics',{fixture:id,team:teamId})));
-  sr.forEach(res=>{
-    if(!res.length)return; sc++;
-    (res[0]?.statistics||[]).forEach(s=>{
-      if(s.type==='Corner Kicks')corners+=parseInt(s.value)||0;
-      if(s.type==='Yellow Cards')cards+=parseInt(s.value)||0;
-      if(s.type==='Red Cards')cards+=parseInt(s.value)||0;
-      if(s.type==='Total Shots')shots+=parseInt(s.value)||0;
-    });
-  });
-  const n=fixtures.length||1,ns=sc||1;
-  return{avgGoals:(goals/n).toFixed(2),avgConceded:(conceded/n).toFixed(2),avgCorners:(corners/ns).toFixed(2),avgCards:(cards/ns).toFixed(2),avgShots:(shots/ns).toFixed(2),W,D,L,form,n};
-}
-
-function showTab(t){
-  document.querySelectorAll('.tab').forEach(e=>e.classList.toggle('active',e.dataset.tab===t));
-  document.querySelectorAll('.tc').forEach(e=>e.classList.toggle('active',e.id==='tc-'+t));
-}
-
-async function selectMatch(fid,home,away,hId,aId,league,time,lgId){
-  document.querySelectorAll('.match-item').forEach(e=>e.classList.remove('active'));
-  const el=document.getElementById('mi-'+fid);if(el)el.classList.add('active');
-  document.getElementById('welcome').style.display='none';
-  const det=document.getElementById('mdetail');det.style.display='block';
-  det.innerHTML=`<div class="mdetail">
-    <div class="mheader">
-      <div class="mteams"><div class="tname">${home}</div><div class="vs">VS</div><div class="tname">${away}</div></div>
-      <div class="mmeta"><div class="pill">🏆 <span>${league}</span></div><div class="pill">🕐 <span>${time}</span></div><div class="pill">📅 <span>${getDate(currentDay)}</span></div></div>
-    </div>
-    <div class="tabs">
-      <div class="tab active" data-tab="analysis" onclick="showTab('analysis')">📊 Análisis</div>
-      <div class="tab" data-tab="compare" onclick="showTab('compare')">⚖️ Comparar</div>
-      <div class="tab" data-tab="lineup" onclick="showTab('lineup')">👕 Alineación</div>
-      <div class="tab" data-tab="h2h" onclick="showTab('h2h')">🔄 H2H</div>
-    </div>
-    <div id="tc-analysis" class="tc active"><div class="loading"><div class="spinner"></div> Analizando últimos 10 partidos...</div></div>
-    <div id="tc-compare" class="tc"></div>
-    <div id="tc-lineup" class="tc"></div>
-    <div id="tc-h2h" class="tc"></div>
-  </div>`;
-  const[hs,as_,lineups,h2h]=await Promise.all([getTeamStats(hId,lgId),getTeamStats(aId,lgId),api('/fixtures/lineups',{fixture:fid}),api('/fixtures/headtohead',{h2h:`${hId}-${aId}`,last:6})]);
-  renderAnalysis(home,away,hs,as_);
-  renderCompare(home,away,hs,as_);
-  renderLineup(home,away,lineups);
-  renderH2H(h2h);
-}
-
-function bar(val,max,color){return `<div class="vbar"><div class="vfill" style="width:${Math.min(100,(val/max)*100)}%;background:${color}"></div></div>`;}
-function badge(v,t){return v>=t?'bg-green':v>=(t*.8)?'bg-yellow':'bg-red';}
-function btext(v,t){return v>=t?`✅ Over ${t}`:`⚠️ Under ${t}`;}
-function formDots(arr){return arr.map(r=>`<div class="fd-dot ${r==='W'?'fw':r==='D'?'fdraw':'fl'}">${r}</div>`).join('');}
-
-function renderAnalysis(home,away,hs,as_){
-  const hC=parseFloat(hs.avgCorners),aC=parseFloat(as_.avgCorners);
-  const hK=parseFloat(hs.avgCards),aK=parseFloat(as_.avgCards);
-  const hG=parseFloat(hs.avgGoals),aG=parseFloat(as_.avgGoals);
-  const hS=parseFloat(hs.avgShots),aS=parseFloat(as_.avgShots);
-  const tC=hC+aC,tK=hK+aK,tG=hG+aG;
-  const recos=[
-    tC>=7.5?{c:'val',i:'🟢',t:`Over 7.5 Corners — Total avg: ${tC.toFixed(1)}/partido`,n:'VALUE'}:{c:'warn',i:'⚠️',t:`Corners bajos — Total avg: ${tC.toFixed(1)} (umbral 7.5)`,n:'DUDOSO'},
-    tK>=3?{c:'val',i:'🟡',t:`Over 3 Tarjetas — Total avg: ${tK.toFixed(1)}/partido`,n:'VALUE'}:{c:'warn',i:'⚠️',t:`Tarjetas bajas — Total avg: ${tK.toFixed(1)} (umbral 3)`,n:'DUDOSO'},
-    tG>=1.5?{c:'val',i:'⚽',t:`Over 1.5 Goles — Total avg: ${tG.toFixed(1)}/partido`,n:'VALUE'}:{c:'bad',i:'❌',t:`Riesgo Over 1.5 — Total avg: ${tG.toFixed(1)}/partido`,n:'EVITAR'}
-  ];
-  document.getElementById('tc-analysis').innerHTML=`<div>
-    <div class="reco-box"><div class="reco-title">🎯 Recomendaciones</div>${recos.map(r=>`<div class="ri ${r.c}"><span>${r.i}</span><span style="flex:1">${r.t}</span><span class="ri-note">${r.n}</span></div>`).join('')}</div>
-    <div class="sgrid">
-      <div class="scard"><h3>🔵 ${home} — últimos ${hs.n}</h3>
-        <div class="vrow"><span class="vlabel">Corners/partido</span>${bar(hC,8,'var(--blue-light)')}<span class="vpct c-blue">${hC}</span></div>
-        <div class="vrow"><span class="vlabel">Tarjetas/partido</span>${bar(hK,5,'var(--yellow-light)')}<span class="vpct c-yellow">${hK}</span></div>
-        <div class="vrow"><span class="vlabel">Goles marcados</span>${bar(hG,3,'var(--green-light)')}<span class="vpct c-green">${hG}</span></div>
-        <div class="vrow"><span class="vlabel">Goles recibidos</span>${bar(parseFloat(hs.avgConceded),3,'var(--red-light)')}<span class="vpct c-red">${hs.avgConceded}</span></div>
-        <div class="vrow"><span class="vlabel">Tiros/partido</span>${bar(hS,20,'var(--purple-light)')}<span class="vpct c-purple">${hS}</span></div>
-        <div style="margin-top:10px;font-size:.7rem;color:var(--text-muted)">Forma reciente</div>
-        <div class="form-dots">${formDots(hs.form)}</div>
-      </div>
-      <div class="scard"><h3>🔴 ${away} — últimos ${as_.n}</h3>
-        <div class="vrow"><span class="vlabel">Corners/partido</span>${bar(aC,8,'var(--blue-light)')}<span class="vpct c-blue">${aC}</span></div>
-        <div class="vrow"><span class="vlabel">Tarjetas/partido</span>${bar(aK,5,'var(--yellow-light)')}<span class="vpct c-yellow">${aK}</span></div>
-        <div class="vrow"><span class="vlabel">Goles marcados</span>${bar(aG,3,'var(--green-light)')}<span class="vpct c-green">${aG}</span></div>
-        <div class="vrow"><span class="vlabel">Goles recibidos</span>${bar(parseFloat(as_.avgConceded),3,'var(--red-light)')}<span class="vpct c-red">${as_.avgConceded}</span></div>
-        <div class="vrow"><span class="vlabel">Tiros/partido</span>${bar(aS,20,'var(--purple-light)')}<span class="vpct c-purple">${aS}</span></div>
-        <div style="margin-top:10px;font-size:.7rem;color:var(--text-muted)">Forma reciente</div>
-        <div class="form-dots">${formDots(as_.form)}</div>
-      </div>
-      <div class="scard full"><h3>📊 Totales esperados</h3>
-        <div class="total-box">
-          <div class="tbox"><div class="tval" style="color:${tC>=7.5?'var(--green-light)':'var(--yellow-light)'}">${tC.toFixed(1)}</div><div class="tlabel">Corners Esperados</div><div class="tbadge ${badge(tC,7.5)}">${btext(tC,7.5)}</div></div>
-          <div class="tbox"><div class="tval" style="color:${tK>=3?'var(--green-light)':'var(--yellow-light)'}">${tK.toFixed(1)}</div><div class="tlabel">Tarjetas Esperadas</div><div class="tbadge ${badge(tK,3)}">${btext(tK,3)}</div></div>
-          <div class="tbox"><div class="tval" style="color:${tG>=1.5?'var(--green-light)':'var(--red-light)'}">${tG.toFixed(1)}</div><div class="tlabel">Goles Esperados</div><div class="tbadge ${badge(tG,1.5)}">${btext(tG,1.5)}</div></div>
-        </div>
-      </div>
-    </div></div>`;
-}
-
-function renderCompare(home,away,hs,as_){
-  document.getElementById('tc-compare').innerHTML=`<div style="padding:0 0 16px"><div class="tcomp">
-    <div class="tteam"><h4>🔵 ${home}</h4>
-      <div class="srow"><span class="sname">Avg Corners</span><span class="c-blue">${hs.avgCorners}</span></div>
-      <div class="srow"><span class="sname">Avg Tarjetas</span><span class="c-yellow">${hs.avgCards}</span></div>
-      <div class="srow"><span class="sname">Avg Goles</span><span class="c-green">${hs.avgGoals}</span></div>
-      <div class="srow"><span class="sname">Avg Recibidos</span><span class="c-red">${hs.avgConceded}</span></div>
-      <div class="srow"><span class="sname">Avg Tiros</span><span class="c-purple">${hs.avgShots}</span></div>
-      <div class="srow"><span class="sname">V/E/D (10)</span><span>${hs.W}/${hs.D}/${hs.L}</span></div>
-    </div>
-    <div class="tteam"><h4>🔴 ${away}</h4>
-      <div class="srow"><span class="sname">Avg Corners</span><span class="c-blue">${as_.avgCorners}</span></div>
-      <div class="srow"><span class="sname">Avg Tarjetas</span><span class="c-yellow">${as_.avgCards}</span></div>
-      <div class="srow"><span class="sname">Avg Goles</span><span class="c-green">${as_.avgGoals}</span></div>
-      <div class="srow"><span class="sname">Avg Recibidos</span><span class="c-red">${as_.avgConceded}</span></div>
-      <div class="srow"><span class="sname">Avg Tiros</span><span class="c-purple">${as_.avgShots}</span></div>
-      <div class="srow"><span class="sname">V/E/D (10)</span><span>${as_.W}/${as_.D}/${as_.L}</span></div>
-    </div>
-  </div></div>`;
-}
-
-function renderLineup(home,away,lineups){
-  if(!lineups?.length){document.getElementById('tc-lineup').innerHTML='<div class="no-data">⏳ Alineaciones no disponibles (~1h antes del partido)</div>';return;}
-  const rp=lu=>!lu?'<div class="no-data">No disponible</div>':(lu.startXI||[]).map(p=>`<div class="prow"><div class="pnum">${p.player.number||'?'}</div><span>${p.player.name}</span><span class="ppos">${p.player.pos||'?'}</span></div>`).join('');
-  document.getElementById('tc-lineup').innerHTML=`<div class="lineup-wrap" style="padding:0 0 16px">
-    <div class="lteam"><h3>🔵 ${home} (${lineups[0]?.formation||'?'})</h3>${rp(lineups[0])}</div>
-    <div class="lteam"><h3>🔴 ${away} (${lineups[1]?.formation||'?'})</h3>${rp(lineups[1])}</div>
-  </div>`;
-}
-
-function renderH2H(h2h){
-  if(!h2h?.length){document.getElementById('tc-h2h').innerHTML='<div class="no-data">📭 Sin datos H2H</div>';return;}
-  document.getElementById('tc-h2h').innerHTML=`<div style="padding:0 0 16px"><div class="h2h-list">${h2h.map(m=>`
-    <div class="h2h-item">
-      <div><div style="font-size:.68rem;color:var(--text-muted)">${m.fixture.date.split('T')[0]}</div><div>${m.teams.home.name}</div></div>
-      <div class="h2h-score">${m.goals.home??'-'} - ${m.goals.away??'-'}</div>
-      <div style="text-align:right"><div style="font-size:.68rem;color:var(--text-muted)">${m.league.name}</div><div>${m.teams.away.name}</div></div>
-    </div>`).join('')}
-  </div></div>`;
-}
-
-// Init: test connection then load
-testConnection().then(() => loadMatches());
-</script>
-</body>
-</html>
+    <label>1. Selecciona el deporte</label>
+    <div class="select-wrapper">
+      <select id="sportSelect">
+        <option value="">— Elige un deporte —</option>
+        <option value="soccer">⚽ Fútbol</option>
+        <option value="basketball">🏀 Basketball</option>
+        <option v
