@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Predictor de Partidos</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0f0f1a; color: #e0e0f0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 40px 20px; }
+    h1 { font-size: 2rem; margin-bottom: 8px; background: linear-gradient(90deg, #7f5af0, #2cb67d); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .subtitle { color: #888; margin-bottom: 40px; font-size: 0.9rem; }
+    .card { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 16px; padding: 32px; width: 100%; max-width: 680px; display: flex; flex-direction: column; gap: 20px; }
+    label { font-size: 0.8rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; display: block; }
+    select { width: 100%; padding: 12px 16px; background: #0f0f1a; border: 1px solid #3a3a5c; border-radius: 10px; color: #e0e0f0; font-size: 1rem; appearance: none; cursor: pointer; transition: border-color 0.2s; }
+    select:focus { outline: none; border-color: #7f5af0; }
+    select:disabled { opacity: 0.4; cursor: not-allowed; }
+    .select-wrapper { position: relative; }
+    .select-wrapper::after { content: '▾'; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: #7f5af0; pointer-events: none; }
+    .teams-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    button.primary-btn { padding: 14px; background: linear-gradient(135deg, #7f5af0, #2cb67d); border: none; border-radius: 10px; color: white; font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s, transform 0.1s; }
+    button.primary-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+    button.primary-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.scan-btn { padding: 14px; background: linear-gradient(135deg, #f7971e, #ffd200); border: none; border-radius: 10px; color: #0f0f1a; font-size: 1rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s, transform 0.1s; }
+    button.scan-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+    button.scan-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    #result { display: none; background: #0f0f1a; border: 1px solid #3a3a5c; border-radius: 12px; padding: 24px; text-align: center; }
+    #result .winner { font-size: 1.6rem; font-weight: 700; color: #2cb67d; margin-bottom: 8px; }
+    .prob-row { display: flex; justify-content: space-between; margin-top: 16px; gap: 12px; }
+    .prob-box { flex: 1; background: #1a1a2e; border-radius: 10px; padding: 14px; border: 1px solid #2a2a4a; }
+    .prob-box.highlight { border-color: #2cb67d; }
+    .prob-box .team-name { font-size: 0.85rem; color: #aaa; margin-bottom: 4px; }
+    .prob-box .pct { font-size: 1.5rem; font-weight: 700; color: #e0e0f0; }
+    .prob-box.highlight .pct { color: #2cb67d; }
+    .bar-wrap { background: #2a2a4a; border-radius: 999px; height: 8px; margin-top: 16px; overflow: hidden; }
+    .bar-fill { height: 100%; background: linear-gradient(90deg, #7f5af0, #2cb67d); border-radius: 999px; transition: width 0.6s ease; }
+    #combinedScore { display: none; background: #0f0f1a; border: 1px solid #7f5af044; border-radius: 12px; padding: 20px; text-align: center; }
+    .combined-title { font-size: 0.75rem; color: #7f5af0; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
+    .combined-winner { font-size: 1.4rem; font-weight: 700; color: #ffd700; margin-bottom: 6px; }
+    .combined-sub { font-size: 0.8rem; color: #888; margin-bottom: 14px; }
+    .combined-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+    .combined-bar-item { background: #1a1a2e; border-radius: 10px; padding: 12px; border: 1px solid #2a2a4a; }
+    .combined-bar-item.best { border-color: #ffd700; }
+    .cb-name { font-size: 0.8rem; color: #aaa; margin-bottom: 6px; }
+    .cb-score { font-size: 1.3rem; font-weight: 700; color: #e0e0f0; }
+    .combined-bar-item.best .cb-score { color: #ffd700; }
+    .cb-detail { font-size: 0.72rem; color: #666; margin-top: 4px; }
+    .confidence-badge { display: inline-block; margin-top: 10px; padding: 4px 14px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; }
+    .conf-high   { background: #2cb67d22; color: #2cb67d; border: 1px solid #2cb67d; }
+    .conf-medium { background: #ffd70022; color: #ffd700; border: 1px solid #ffd700; }
+    .conf-low    { background: #ff6b6b22; color: #ff6b6b; border: 1px solid #ff6b6b; }
+    .espn-teams-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .team-card { background: #0f0f1a; border: 1px solid #2a2a4a; border-radius: 12px; padding: 16px; }
+    .team-card h3 { font-size: 0.95rem; color: #7f5af0; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .team-card img.team-logo { width: 28px; height: 28px; object-fit: contain; }
+    .form-row { display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap; }
+    .form-badge { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; }
+    .form-badge.W { background: #2cb67d22; color: #2cb67d; border: 1px solid #2cb67d; }
+    .form-badge.L { background: #ff6b6b22; color: #ff6b6b; border: 1px solid #ff6b6b; }
+    .form-badge.D { background: #ffd70022; color: #ffd700; border: 1px solid #ffd700; }
+    .stat-row { display: flex; justify-content: space-between; font-size: 0.8rem; color: #aaa; padding: 4px 0; border-bottom: 1px solid #1a1a2e; }
+    .stat-row span:last-child { color: #e0e0f0; font-weight: 600; }
+    .section-title { font-size: 0.7rem; color: #555; text-transform: uppercase; letter-spacing: 0.08em; margin: 8px 0 4px; }
+    .form-score-bar { margin-top: 8px; }
+    .form-score-label { display: flex; justify-content: space-between; font-size: 0.75rem; color: #888; margin-bottom: 4px; }
+    .form-score-track { background: #2a2a4a; border-radius: 999px; height: 6px; overflow: hidden; }
+    .form-score-fill { height: 100%; border-radius: 999px; transition: width 0.6s ease; }
+    #error { color: #ff6b6b; font-size: 0.85rem; text-align: center; display: none; }
+    .loader { border: 3px solid #2a2a4a; border-top-color: #7f5af0; border-radius: 50%; width: 28px; height: 28px; animation: spin 0.7s linear infinite; margin: 0 auto; display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .quota { font-size: 0.75rem; color: #555; text-align: right; }
+    .divider { border: none; border-top: 1px solid #2a2a4a; margin: 4px 0; }
+    .ev-filter { padding: 6px 14px; border-radius: 999px; border: 1px solid #555; background: transparent; color: #aaa; cursor: pointer; font-size: 0.8rem; transition: all 0.2s; }
+    .ev-filter.active { background: #2cb67d22; color: #2cb67d; border-color: #2cb67d; }
+    .scanner-card { background: #0f0f1a; border-radius: 12px; padding: 16px; }
+    .scanner-stats { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .scanner-stat { background: #1a1a2e; border-radius: 8px; padding: 8px; text-align: center; }
+    .scanner-stat-label { font-size: 0.68rem; color: #555; margin-bottom: 2px; }
+    .scanner-stat-value { font-size: 0.95rem; font-weight: 700; }
+
+    /* ── MLB PANEL ─────────────────────────────────────── */
+    .mlb-team-col { background: #1a1a2e; border-radius: 10px; padding: 12px; }
+    .mlb-team-col-name { font-size: 0.82rem; font-weight: 700; color: #7f5af0; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .mlb-row { display: flex; justify-content: space-between; font-size: 0.78rem; color: #aaa; padding: 3px 0; border-bottom: 1px solid #0f0f1a; }
+    .mlb-row span:last-child { color: #e0e0f0; font-weight: 600; }
+    .mlb-row-section { font-size: 0.65rem; color: #444; text-transform: uppercase; letter-spacing: 0.06em; margin: 7px 0 3px; }
+    .mlb-odd-box { background: #1a1a2e; border-radius: 8px; padding: 8px; text-align: center; }
+    .mlb-odd-label { font-size: 0.62rem; color: #555; margin-bottom: 3px; }
+    .mlb-odd-value { font-size: 0.95rem; font-weight: 700; }
+    .mlb-extra-mini { background: #1a1a2e; border-radius: 8px; padding: 10px; }
+    .mlb-extra-mini-label { font-size: 0.65rem; color: #555; margin-bottom: 3px; }
+    .mlb-extra-mini-value { font-size: 0.82rem; color: #e0e0f0; font-weight: 600; }
+    .mlb-rec-badge { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; border-radius: 999px; font-size: 0.85rem; font-weight: 700; text-align: center; flex-wrap: wrap; }
+    .rec-good  { background: #2cb67d22; color: #2cb67d; border: 1px solid #2cb67d; }
+    .rec-tight { background: #ffd70022; color: #ffd700; border: 1px solid #ffd700; }
+    .rec-avoid { background: #ff6b6b22; color: #ff6b6b; border: 1px solid #ff6b6b; }
+
+    /* ── TRACKER ────────────────────────────────────────────── */
+    #trackerContent input { outline: none; }
+    #trackerContent input:focus { border-color: #7f5af0 !important; }
+    #trackerContent select { outline: none; cursor: pointer; }
+    #trackerContent button:hover { opacity: 0.85; }
+    #trackerPanel { display: flex; flex-direction: column; gap: 10px; }
+    .tab-active-predict { border-color: #7f5af0 !important; background: #1a1a2e !important; color: #7f5af0 !important; }
+    .tab-active-tracker { border-color: #2cb67d !important; background: #1a1a2e !important; color: #2cb67d !important; }
+    /* ── Over/Under badge ──────────────────────────────────── */
+    .ou-over  { background: #f7971e22; color: #f7971e; border: 1px solid #f7971e; border-radius: 8px; padding: 8px 14px; font-size: 0.82rem; font-weight: 700; }
+    .ou-under { background: #7f5af022; color: #a78bfa; border: 1px solid #7f5af0; border-radius: 8px; padding: 8px 14px; font-size: 0.82rem; font-weight: 700; }
+    .ou-push  { background: #ffd70022; color: #ffd700; border: 1px solid #ffd700; border-radius: 8px; padding: 8px 14px; font-size: 0.82rem; font-weight: 700; }
+    /* ── Savant badge ──────────────────────────────────────── */
+    .savant-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 700; }
+    .savant-good { background: #2cb67d22; color: #2cb67d; border: 1px solid #2cb67d44; }
+    .savant-bad  { background: #ff6b6b22; color: #ff6b6b; border: 1px solid #ff6b6b44; }
+    .savant-mid  { background: #ffd70022; color: #ffd700; border: 1px solid #ffd70044; }
+  </style>
+</head>
+<body>
+
+<h1>⚽🏀⚾ Predictor de Partidos</h1>
+<p class="subtitle">Odds · ESPN · Pitchers · FIP/xERA · Total Modelo · EV% · Kelly · Over/Under · Tracker ROI</p>
+
+<div class="card">
+
+  <!-- DEPORTE -->
+  <div>
+    <label>1. Selecciona el deporte</label>
+    <div class="select-wrapper">
+      <select id="sportSelect">
+        <option value="">— Elige un deporte —</option>
+        <option value="soccer">⚽ Fútbol</option>
+        <option value="basketball">🏀 Basketball</option>
+        <option value="baseball">⚾ Béisbol</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- LIGA -->
+  <div>
+    <label>2. Selecciona la liga</label>
+    <div class="select-wrapper">
+      <select id="leagueSelect" disabled>
+        <option value="">— Primero elige un deporte —</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- PANEL 1v1 — Fútbol y Basketball -->
+  <div id="v1Panel" style="display:none;flex-direction:column;gap:20px">
+    <div class="teams-row">
+      <div>
+        <label>3. Equipo A</label>
+        <div class="select-wrapper">
+          <select id="teamA" disabled><option value="">— Elige liga primero —</option></select>
+        </div>
+      </div>
+      <div>
+        <label>4. Equipo B</label>
+        <div class="select-wrapper">
+          <select id="teamB" disabled><option value="">— Elige liga primero —</option></select>
+        </div>
+      </div>
+    </div>
+
+    <div id="error">⚠️ <span id="errorMsg"></span></div>
+    <div class="loader" id="loader"></div>
+
+    <button id="predictBtn" class="primary-btn" disabled>Predecir ganador</button>
+
+    <div id="result">
+      <div style="color:#888;font-size:0.8rem;margin-bottom:6px">PROBABILIDAD DE MERCADO (ODDS)</div>
+      <div class="winner" id="winnerName"></div>
+      <div style="color:#666;font-size:0.8rem" id="bookmakerCount"></div>
+      <div class="prob-row">
+        <div class="prob-box" id="boxA">
+          <div class="team-name" id="nameA"></div>
+          <div class="pct" id="pctA"></div>
+        </div>
+        <div class="prob-box" id="boxB">
+          <div class="team-name" id="nameB"></div>
+          <div class="pct" id="pctB"></div>
+        </div>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill" id="barFill"></div></div>
+    </div>
+
+    <div id="combinedScore">
+      <div class="combined-title">🧠 Predicción combinada (Odds 60% + Forma ESPN 40%)</div>
+      <div class="combined-winner" id="combinedWinner"></div>
+      <div class="combined-sub" id="combinedSub"></div>
+      <div class="combined-bars">
+        <div class="combined-bar-item" id="cbBoxA">
+          <div class="cb-name" id="cbNameA"></div>
+          <div class="cb-score" id="cbScoreA"></div>
+          <div class="cb-detail" id="cbDetailA"></div>
+        </div>
+        <div class="combined-bar-item" id="cbBoxB">
+          <div class="cb-name" id="cbNameB"></div>
+          <div class="cb-score" id="cbScoreB"></div>
+          <div class="cb-detail" id="cbDetailB"></div>
+        </div>
+      </div>
+      <div id="confidenceBadge"></div>
+    </div>
+
+    <div id="espnPanel" style="display:none;flex-direction:column;gap:12px">
+      <div style="font-size:0.7rem;color:#555;text-transform:uppercase;letter-spacing:0.08em">🏟️ Estado del equipo — ESPN</div>
+      <div class="espn-teams-grid" id="espnGrid"></div>
+    </div>
+
+    <hr class="divider"/>
+
+    <button id="scanBtn" class="scan-btn" disabled>🔍 Escanear todos los partidos de hoy</button>
+
+    <div id="evFilterRow" style="display:none;gap:8px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:0.78rem;color:#888">Filtrar por EV:</span>
+      <button class="ev-filter active" data-min="0">🟢 Todos</button>
+      <button class="ev-filter" data-min="0.05">🟡 EV &gt; 5%</button>
+      <button class="ev-filter" data-min="0.10">🔴 EV &gt; 10%</button>
+    </div>
+
+    <div id="scannerPanel" style="display:none;flex-direction:column;gap:10px"></div>
+  </div>
+
+  <!-- PANEL BÉISBOL MLB / NCAA -->
+  <div id="mlbGamesPanel" style="display:none;flex-direction:column;gap:14px"></div>
+
+  <div class="quota" id="quotaInfo"></div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
