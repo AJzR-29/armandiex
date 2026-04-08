@@ -901,64 +901,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-
-  // ════
-  // F5 RECOMMENDATION ENGINE
-  // ════
-  function getF5Recommendation(hp, ap, hpFG, apFG, wind, stadium, homeRecent, awayRecent) {
-    var rec = { type: null, label: '', color: '' };
-
-    var hERA = parseFloat(hp.era) || 4.5;
-    var aERA = parseFloat(ap.era) || 4.5;
-    var hFIP = hpFG ? (parseFloat(hpFG.FIP) || hERA) : hERA;
-    var aFIP = apFG ? (parseFloat(apFG.FIP) || aERA) : aERA;
-    var hK9  = parseFloat(hp.k9) || 7.5;
-    var aK9  = parseFloat(ap.k9) || 7.5;
-    var pf   = stadium ? stadium.pf : 1.0;
-    var temp = wind ? wind.temp : 20;
-
-    // ── Condiciones para Under F5 ────
-    var bothERAlow   = hERA < 3.50 && aERA < 3.50;
-    var bothFIPlow   = hFIP < 3.80 && aFIP < 3.80;
-    var bothK9high   = hK9 >= 8.0  && aK9 >= 8.0;
-    var parkNeutral  = pf <= 1.02;
-    var coldWeather  = temp <= 10;
-    var lowRunsHome  = homeRecent && homeRecent.rolling7 && parseFloat(homeRecent.rolling7) < 3.5;
-    var lowRunsAway  = awayRecent && awayRecent.rolling7 && parseFloat(awayRecent.rolling7) < 3.5;
-
-    var underScore = 0;
-    if(bothERAlow)  underScore += 3;
-    if(bothFIPlow)  underScore += 2;
-    if(bothK9high)  underScore += 2;
-    if(parkNeutral) underScore += 1;
-    if(coldWeather) underScore += 1;
-    if(lowRunsHome) underScore += 1;
-    if(lowRunsAway) underScore += 1;
-
-    // ── Condiciones para ML F5 ────
-    var bigFIPGap   = Math.abs(hFIP - aFIP) >= 1.2;
-    var oneDominant = (hERA < 3.0 && aERA > 4.0) || (aERA < 3.0 && hERA > 4.0);
-
-    if(underScore >= 7) {
-      rec.type  = 'UNDER';
-      rec.label = '🔵 UNDER F5 recomendado · Ambos pitchers dominantes · Score: ' + underScore + '/11';
-      rec.color = '#2cb67d';
-    } else if(underScore >= 5) {
-      rec.type  = 'UNDER_LEVE';
-      rec.label = '🟡 Under F5 posible · Score: ' + underScore + '/11';
-      rec.color = '#ffd700';
-    } else if(oneDominant || bigFIPGap) {
-      rec.type  = 'ML_F5';
-      rec.label = '⚾ ML F5 recomendado · Pitcher dominante claro';
-      rec.color = '#7f5af0';
-    } else {
-      rec.type  = 'ML_F5';
-      rec.label = '⚾ ML F5 · Apuesta más limpia disponible';
-      rec.color = '#aaa';
-    }
-    return rec;
-  }
-
   async function buildGameCard(ev,oddsData,mlbSched,mlbHit,isMLB){
     var comp=ev.competitions&&ev.competitions[0];
     var homeC=((comp&&comp.competitors)||[]).find(function(c){return c.homeAway==='home';})||{};
@@ -1419,10 +1361,7 @@ document.addEventListener('DOMContentLoaded', function () {
       oddsHTML+
       modelBreakdown+
       '<div class="mlb-rec-badge '+recC+'">'+recL+'</div>'+
-      (function(){
-        var f5rec=getF5Recommendation(hp,ap,hpFG,apFG,wind,stadium,homeRecent,awayRecent);
-        return '<div style="margin-top:4px;padding:8px 14px;border-radius:8px;border:1px solid '+f5rec.color+'44;background:'+f5rec.color+'11;font-size:0.78rem;font-weight:600;color:'+f5rec.color+'">'+f5rec.label+'</div>';
-      })()+
+      (function(){var f5=getF5Recommendation(hp,ap,stadium,homeRecent,awayRecent,wind);return '<div style="margin-top:6px;padding:8px 12px;border-radius:8px;border:1px solid '+f5.color+'44;background:'+f5.color+'11;font-size:0.78rem;font-weight:600;color:'+f5.color+';text-align:center">'+f5.label+'</div>';})()+
       '<button class="props-btn" id="propsbtn-'+gameUniqueId+'" onclick="toggleProps(this,\''+gameUniqueId+'\')" style="width:100%;margin-top:8px;padding:10px;background:transparent;border:1px solid #7f5af044;border-radius:10px;color:#7f5af0;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s">🎯 Ver análisis de props</button>'+
       '<div id="props-'+gameUniqueId+'" style="display:none"></div>';
     return div;
@@ -1699,6 +1638,40 @@ document.addEventListener('DOMContentLoaded', function () {
         '</div>'+
       '</div>';
     return html;
+  }
+
+
+  // ── F5 RECOMMENDATION ENGINE ────
+  function getF5Recommendation(hp, ap, stadium, homeRecent, awayRecent, wind) {
+    var score = 0;
+    var hERA = parseFloat(hp.era); var aERA = parseFloat(ap.era);
+    if (!isNaN(hERA) && hERA < 3.50) score += 2;
+    else if (!isNaN(hERA) && hERA < 4.20) score += 1;
+    if (!isNaN(aERA) && aERA < 3.50) score += 2;
+    else if (!isNaN(aERA) && aERA < 4.20) score += 1;
+    var hFIP = parseFloat(hp.fip); var aFIP = parseFloat(ap.fip);
+    if (!isNaN(hFIP) && hFIP < 3.50) score += 1;
+    if (!isNaN(aFIP) && aFIP < 3.50) score += 1;
+    var hK9 = parseFloat(hp.k9); var aK9 = parseFloat(ap.k9);
+    if (!isNaN(hK9) && hK9 >= 9.0) score += 1;
+    if (!isNaN(aK9) && aK9 >= 9.0) score += 1;
+    var pf = stadium ? stadium.pf : 1.0;
+    if (pf <= 0.92) score += 2;
+    else if (pf <= 0.97) score += 1;
+    else if (pf >= 1.10) score -= 1;
+    if (wind && wind.temp <= 10) score += 1;
+    else if (wind && wind.temp >= 28) score -= 1;
+    var hRolling = homeRecent ? parseFloat(homeRecent.rolling7) : null;
+    var aRolling = awayRecent ? parseFloat(awayRecent.rolling7) : null;
+    if (!isNaN(hRolling) && hRolling < 3.5) score += 1;
+    if (!isNaN(aRolling) && aRolling < 3.5) score += 1;
+    var hERAok = !isNaN(hERA) && hERA < 4.20;
+    var aERAok = !isNaN(aERA) && aERA < 4.20;
+    var pitcherEdge = (hERAok && !aERAok) || (!hERAok && aERAok);
+    if (score >= 7) return { label: '\u{1F535} UNDER F5 recomendado', color: '#7f5af0', score: score };
+    else if (score >= 5) return { label: '\u{1F7E1} Under F5 posible', color: '#ffd700', score: score };
+    else if (pitcherEdge) return { label: '\u26BE ML F5 recomendado', color: '#2cb67d', score: score };
+    else return { label: '\u26BE ML F5 \u00B7 Apuesta m\u00E1s limpia', color: '#aaa', score: score };
   }
 
   // ── SPORT SELECTOR ────────────────────────────────────────────
