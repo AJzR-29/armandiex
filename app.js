@@ -1192,6 +1192,9 @@ document.addEventListener('DOMContentLoaded', function () {
       recL='🔴 Muy parejo · Modelo '+modelFavPct+'%-'+modelUnderdogPct+'%'+alertStr;
     }
 
+    // ── F5 Recommendation ─────
+    var f5rec = isMLB ? getF5Recommendation(hp, ap, stadium, homeRecent, awayRecent, wind, homeTeam, awayTeam) : null;
+
     // ── Breakdown del modelo (para mostrar en la tarjeta) ─────
     var modelBreakdown=
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-top:8px">'+
@@ -1361,7 +1364,7 @@ document.addEventListener('DOMContentLoaded', function () {
       oddsHTML+
       modelBreakdown+
       '<div class="mlb-rec-badge '+recC+'">'+recL+'</div>'+
-      (function(){var f5=getF5Recommendation(hp,ap,stadium,homeRecent,awayRecent,wind);return '<div style="margin-top:6px;padding:8px 12px;border-radius:8px;border:1px solid '+f5.color+'44;background:'+f5.color+'11;font-size:0.78rem;font-weight:600;color:'+f5.color+';text-align:center">'+f5.label+'</div>';})()+
+      (f5rec ? '<div style="margin-top:6px;padding:6px 10px;border-radius:8px;font-size:0.78rem;font-weight:700;text-align:center;background:#0a0a18;border:1px solid '+f5rec.color+'44;color:'+f5rec.color+'">'+f5rec.label+'</div>' : '')+
       '<button class="props-btn" id="propsbtn-'+gameUniqueId+'" onclick="toggleProps(this,\''+gameUniqueId+'\')" style="width:100%;margin-top:8px;padding:10px;background:transparent;border:1px solid #7f5af044;border-radius:10px;color:#7f5af0;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s">🎯 Ver análisis de props</button>'+
       '<div id="props-'+gameUniqueId+'" style="display:none"></div>';
     return div;
@@ -1640,9 +1643,9 @@ document.addEventListener('DOMContentLoaded', function () {
     return html;
   }
 
-
+  
   // ── F5 RECOMMENDATION ENGINE ────
-  function getF5Recommendation(hp, ap, stadium, homeRecent, awayRecent, wind) {
+  function getF5Recommendation(hp, ap, stadium, homeRecent, awayRecent, wind, homeTeam, awayTeam) {
     var score = 0;
     var hERA = parseFloat(hp.era); var aERA = parseFloat(ap.era);
     if (!isNaN(hERA) && hERA < 3.50) score += 2;
@@ -1665,16 +1668,21 @@ document.addEventListener('DOMContentLoaded', function () {
     var aRolling = awayRecent ? parseFloat(awayRecent.rolling7) : null;
     if (!isNaN(hRolling) && hRolling < 3.5) score += 1;
     if (!isNaN(aRolling) && aRolling < 3.5) score += 1;
-    var hERAok = !isNaN(hERA) && hERA < 4.20;
-    var aERAok = !isNaN(aERA) && aERA < 4.20;
-    var pitcherEdge = (hERAok && !aERAok) || (!hERAok && aERAok);
-    if (score >= 7) return { label: '\u{1F535} UNDER F5 recomendado', color: '#7f5af0', score: score };
-    else if (score >= 5) return { label: '\u{1F7E1} Under F5 posible', color: '#ffd700', score: score };
-    else if (pitcherEdge) return { label: '\u26BE ML F5 recomendado', color: '#2cb67d', score: score };
-    else return { label: '\u26BE ML F5 \u00B7 Apuesta m\u00E1s limpia', color: '#aaa', score: score };
+    var mlTeam = null;
+    var eraDiff = (!isNaN(hERA) && !isNaN(aERA)) ? (aERA - hERA) : 0;
+    var fipDiff  = (!isNaN(hFIP) && !isNaN(aFIP)) ? (aFIP - hFIP) : 0;
+    if (eraDiff > 0.50) mlTeam = homeTeam;
+    else if (eraDiff < -0.50) mlTeam = awayTeam;
+    else if (fipDiff > 0.30) mlTeam = homeTeam;
+    else if (fipDiff < -0.30) mlTeam = awayTeam;
+    var mlLabel = mlTeam ? ('⚾ ML F5 → ' + mlTeam) : '⚾ ML F5 · Sin ventaja clara';
+    if (score >= 7) return { label: '🔵 UNDER F5 recomendado', color: '#7f5af0', score: score };
+    else if (score >= 5) return { label: '🟡 Under F5 posible', color: '#ffd700', score: score };
+    else if (mlTeam) return { label: mlLabel, color: '#2cb67d', score: score };
+    else return { label: '⚾ ML F5 · Sin ventaja clara', color: '#aaa', score: score };
   }
 
-  // ── SPORT SELECTOR ────────────────────────────────────────────
+// ── SPORT SELECTOR ────────────────────────────────────────────
 
   sportSelect.addEventListener('change',function(){
     hideError();
