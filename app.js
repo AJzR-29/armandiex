@@ -470,10 +470,9 @@ document.addEventListener('DOMContentLoaded', function () {
       var grp=s.group&&(s.group.displayName||s.group);
       var typ=s.type&&(s.type.displayName||s.type);
       if(grp==='pitching'&&(typ==='statsSingleSeason'||typ==='season')){
-        // La API puede devolver stats en splits[0].stat O directamente en s.stat
         var st={};
         if(s.splits&&s.splits.length>0){
-          // Buscar el split con más innings (el acumulado de temporada)
+          // Buscar el split con más innings (el acumulado de temporada real)
           var bestSplit=s.splits.reduce(function(best,sp){
             var ip=parseFloat((sp.stat||{}).inningsPitched)||0;
             var bestIp=parseFloat((best.stat||{}).inningsPitched)||0;
@@ -483,7 +482,7 @@ document.addEventListener('DOMContentLoaded', function () {
         } else if(s.stat){
           st=s.stat;
         }
-        // Si no encontramos nada útil, saltar
+        // Si no hay datos útiles, saltar
         if(!st.era&&!st.wins&&!st.inningsPitched) return;
         ps.era=st.era||'—';
         ps.wins=parseInt(st.wins)||0;
@@ -507,7 +506,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   async function fetchPitcherStatsById(pitcherId){
     try{
-      // Intentar con statsSingleSeason primero
       var url=MLBAPI+'/people/'+pitcherId+'?hydrate=stats(group=[pitching],type=[statsSingleSeason],season=2026)';
       var res=await fetch(url);
       if(!res.ok) return null;
@@ -515,20 +513,18 @@ document.addEventListener('DOMContentLoaded', function () {
       var person=(data.people||[])[0];
       if(!person) return null;
       var ps=parsePitcherStats(person.stats||[]);
-      // Si no encontramos stats (pitcher nuevo/pocos juegos), intentar con season
+      // ── FALLBACK: si no encontró stats, intentar endpoint alternativo ──
       if(ps.era==='—'&&ps.ip===0){
-        console.log('[pitcher] fallback season para',person.fullName);
-        var url2=MLBAPI+'/people/'+pitcherId+'/stats?stats=season&group=pitching&season=2026&sportId=1';
-        var res2=await fetch(url2);
-        if(res2.ok){
-          var data2=await res2.json();
-          var stats2=(data2.stats||[]);
-          if(stats2.length>0){
-            // Formato diferente: stats[0].splits[0].stat
-            var ps2=parsePitcherStats(stats2);
+        console.log('[pitcher] fallback /stats para',person.fullName);
+        try{
+          var url2=MLBAPI+'/people/'+pitcherId+'/stats?stats=season&group=pitching&season=2026&sportId=1';
+          var res2=await fetch(url2);
+          if(res2.ok){
+            var data2=await res2.json();
+            var ps2=parsePitcherStats(data2.stats||[]);
             if(ps2.era!=='—'||ps2.ip>0) ps=ps2;
           }
-        }
+        }catch(e2){console.warn('[pitcher fallback error]',e2);}
       }
       console.log('[pitcher]',person.fullName,'ERA:',ps.era,'W-L:',ps.wins+'-'+ps.losses,'WHIP:',ps.whip,'K/9:',ps.k9,'IP:',ps.ip);
       return ps;
@@ -1154,20 +1150,12 @@ document.addEventListener('DOMContentLoaded', function () {
       '| final:',Math.round(modelHome*100)+'%',
       '| hPitch:',hPitchScore.toFixed(2),'aPitch:',aPitchScore.toFixed(2),
       '| hOff:',hOffScore.toFixed(2),'aOff:',aOffScore.toFixed(2));
-    // ── FIX: El PICK es el equipo con EDGE POSITIVO, no el favorito de mercado ──
-    // Edge positivo = nuestro modelo cree que vale más de lo que paga el mercado
-    var edgeHome = modelHome - mktHome;  // positivo = Cubs está barato según modelo
-    var edgeAway = modelAway - mktAway;  // positivo = rival está barato según modelo
-    // Elegir el equipo con mayor edge positivo
-    var betH = edgeHome >= edgeAway;
-    var betTeam = betH ? homeTeam : awayTeam;
-    var betEdge = betH ? edgeHome : edgeAway;
-    var betModel = betH ? modelHome : modelAway;
-    var betMkt   = betH ? mktHome : mktAway;
-    var betOdd   = betH ? bestOddH : bestOddA;
-    var evVal    = oddsEv ? (betModel*(betOdd-1))-(1-betModel) : null;
-    // Si el edge del equipo elegido es NEGATIVO, no hay valor en apostar
-    var hasPositiveEdge = betEdge > 0;
+    var betH=Math.abs(edgeH)>=Math.abs(edgeA);
+    var betTeam=betH?homeTeam:awayTeam;
+    var betEdge=betH?edgeH:edgeA;
+    var betModel=betH?modelHome:modelAway;
+    var betOdd=betH?bestOddH:bestOddA;
+    var evVal=oddsEv?(betModel*(betOdd-1))-(1-betModel):null;
 
     // ── Favorito de mercado ───────────────────────────────────
     var mktFav=mktHome>=mktAway?homeTeam:awayTeam;
@@ -1211,15 +1199,12 @@ document.addEventListener('DOMContentLoaded', function () {
     if(!pitchOK){
       recC='rec-avoid';
       recL='⏳ Pitchers TBD — predicción pendiente';
-    } else if(oddsEv&&hasPositiveEdge&&absEdge>=0.05&&goodOdds&&!windBad){
+    } else if(oddsEv&&absEdge>=0.05&&goodOdds&&!windBad){
       recC='rec-good';
-      recL='🟢 PICK: '+betTeam+' · Modelo '+Math.round(betModel*100)+'% vs Mkt '+Math.round(betMkt*100)+'% · '+modelConf+alertStr;
-    } else if(oddsEv&&!hasPositiveEdge&&absEdge>=0.05){
-      recC='rec-avoid';
-      recL='🔴 SIN VALOR: '+betTeam+' sobrevaluado en mercado · Edge '+Math.round(betEdge*100)+'% · No apostar'+alertStr;
-    } else if(oddsEv&&hasPositiveEdge&&absEdge>=0.02){
+      recL='🟢 PICK: '+betTeam+' · Modelo '+Math.round(betModel*100)+'% vs Mkt '+Math.round((betH?mktHome:mktAway)*100)+'% · '+modelConf+alertStr;
+    } else if(oddsEv&&absEdge>=0.02){
       recC='rec-tight';
-      recL='🟡 LEVE: '+betTeam+' · Modelo '+Math.round(betModel*100)+'% vs Mkt '+Math.round(betMkt*100)+'% · '+modelConf+alertStr;
+      recL='🟡 LEVE: '+betTeam+' · Modelo '+Math.round(betModel*100)+'% · '+modelConf+alertStr;
     } else if(modelFavPct>=62){
       recC=modelAgreesMkt?'rec-good':'rec-tight';
       recL=(modelAgreesMkt?'🟢':'🟡')+' '+modelFav+' (Modelo '+modelFavPct+'%'+(oddsEv?' · Mkt '+mktFavPct+'%':' · sin odds')+')'+(modelAgreesMkt?'':' ⚡ Modelo difiere del mkt')+alertStr;
@@ -1241,8 +1226,8 @@ document.addEventListener('DOMContentLoaded', function () {
         '<div class="mlb-odd-box"><div class="mlb-odd-label">🏪 Mercado</div>'+
           '<div class="mlb-odd-value" style="color:#aaa">'+Math.round(mktHome*100)+'%</div></div>'+
         '<div class="mlb-odd-box"><div class="mlb-odd-label">⚡ Edge</div>'+
-          '<div class="mlb-odd-value" style="color:'+(betEdge>=0.05?'#2cb67d':betEdge>=0.02?'#ffd700':betEdge<0?'#ff6b6b':'#555')+'">'+
-            (betEdge>=0?'+':'')+Math.round(betEdge*100)+'%</div></div>'+
+          '<div class="mlb-odd-value" style="color:'+(absEdge>=0.05?'#2cb67d':absEdge>=0.02?'#ffd700':'#555')+'">'+
+            (edgeH>=0?'+':'')+Math.round(edgeH*100)+'%</div></div>'+
       '</div>'+
       (umpire?'<div style="font-size:0.68rem;color:#555;margin-top:4px;text-align:center">👨‍⚖️ HP Umpire: '+umpire.name+(umpire.kFactor!==0?' ('+( umpire.kFactor>0?'+':'')+Math.round(umpire.kFactor*100)+'% Ks)':'')+'</div>':'')+
       (homeBullpen&&homeBullpen.avgERA?'<div style="font-size:0.68rem;color:#555;margin-top:2px;text-align:center">🔧 Bullpen: '+homeAbbr+' ERA '+homeBullpen.avgERA+' · '+awayAbbr+' ERA '+(awayBullpen&&awayBullpen.avgERA?awayBullpen.avgERA:'—')+'</div>':'');
