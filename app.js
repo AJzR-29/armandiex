@@ -749,6 +749,166 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // ── Build full NPB game card ──────────────────────────────────
+  // Build NPB card from normalized game data (from npb_stats.json)
+  async function buildNPBGameFromData(game, oddsData){
+    var homeTeam=game.homeTeam||'—';
+    var awayTeam=game.awayTeam||'—';
+    var hPitcherName=game.hPitcher||'TBD';
+    var aPitcherName=game.aPitcher||'TBD';
+    var homeAbbr=homeTeam.replace(/[^A-Z]/g,'').substring(0,3)||homeTeam.substring(0,3).toUpperCase();
+    var awayAbbr=awayTeam.replace(/[^A-Z]/g,'').substring(0,3)||awayTeam.substring(0,3).toUpperCase();
+    var stadium=NPB_STADIUM[homeTeam]||null;
+
+    // Wind
+    var wind=stadium?await fetchWindData(stadium.coords[0],stadium.coords[1]):null;
+
+    // Records from standings in JSON
+    var standings=npbStatsJSON&&npbStatsJSON.npb_standings||[];
+    function getRecord(tName){
+      var n=tName.toLowerCase().split(' ').slice(-1)[0];
+      var row=standings.find(function(s){return s.Team&&s.Team.toLowerCase().includes(n);});
+      if(!row) return {w:0,l:0};
+      var w=parseInt(row.W||row.Win||0)||0;
+      var l=parseInt(row.L||row.Loss||0)||0;
+      return {w:w,l:l};
+    }
+    var homeRec=getRecord(homeTeam);
+    var awayRec=getRecord(awayTeam);
+
+    // Logos from NPB team abbrs (use a simple mapping)
+    var NPB_LOGOS={
+      'Yomiuri Giants':      'https://a.espncdn.com/i/teamlogos/baseball/500/yom.png',
+      'Hanshin Tigers':      'https://a.espncdn.com/i/teamlogos/baseball/500/han.png',
+      'Hiroshima Toyo Carp': 'https://a.espncdn.com/i/teamlogos/baseball/500/hir.png',
+      'Yakult Swallows':     'https://a.espncdn.com/i/teamlogos/baseball/500/yak.png',
+      'DeNA BayStars':       'https://a.espncdn.com/i/teamlogos/baseball/500/den.png',
+      'Chunichi Dragons':    'https://a.espncdn.com/i/teamlogos/baseball/500/chu.png',
+      'Fukuoka SoftBank Hawks':'https://a.espncdn.com/i/teamlogos/baseball/500/fuk.png',
+      'Orix Buffaloes':      'https://a.espncdn.com/i/teamlogos/baseball/500/ori.png',
+      'Lotte Marines':       'https://a.espncdn.com/i/teamlogos/baseball/500/lot.png',
+      'Rakuten Eagles':      'https://a.espncdn.com/i/teamlogos/baseball/500/rak.png',
+      'Nippon-Ham Fighters': 'https://a.espncdn.com/i/teamlogos/baseball/500/nip.png',
+      'Seibu Lions':         'https://a.espncdn.com/i/teamlogos/baseball/500/sei.png',
+    };
+    var homeLogo=NPB_LOGOS[homeTeam]||'';
+    var awayLogo=NPB_LOGOS[awayTeam]||'';
+
+    // Odds
+    var mktHome=0.5,mktAway=0.5,bestOddH=1,bestOddA=1,oddsEv=null,bkCount=0;
+    oddsEv=oddsData.find(function(o){return matchTeamName(o.home_team,homeTeam)&&matchTeamName(o.away_team,awayTeam);})||
+           oddsData.find(function(o){return matchTeamName(o.home_team,awayTeam)&&matchTeamName(o.away_team,homeTeam);});
+    if(oddsEv){
+      var pA=getAvgProb([oddsEv],oddsEv.home_team),pB=getAvgProb([oddsEv],oddsEv.away_team);
+      if(pA&&pB){var tot=pA+pB;mktHome=pA/tot;mktAway=pB/tot;}
+      if(mktHome<0.05||mktAway<0.05){mktHome=0.5;mktAway=0.5;oddsEv=null;}
+      if(oddsEv){
+        bestOddH=getBestOdd(oddsEv,homeTeam);bestOddA=getBestOdd(oddsEv,awayTeam);
+        var bks=new Set();oddsEv.bookmakers.forEach(function(b){bks.add(b.key);});bkCount=bks.size;
+      }
+    }
+
+    // Prediction
+    var homeData={pitcher:{name:hPitcherName}};
+    var awayData={pitcher:{name:aPitcherName}};
+    var pred=calcNPBPrediction(homeTeam,awayTeam,homeData,awayData,mktHome,mktAway,wind,stadium);
+    var modelHome=pred.modelHome,modelAway=pred.modelAway;
+    var edgeH=modelHome-mktHome,edgeA=modelAway-mktAway;
+    var absEdge=Math.max(Math.abs(edgeH),Math.abs(edgeA));
+    var betH=Math.abs(edgeH)>=Math.abs(edgeA);
+    var betTeam=betH?homeTeam:awayTeam;
+    var betModel=betH?modelHome:modelAway;
+    var betMkt=betH?mktHome:mktAway;
+    var betOdd=betH?bestOddH:bestOddA;
+    var evVal=oddsEv?(betModel*(betOdd-1))-(1-betModel):null;
+
+    var modelFav=modelHome>=modelAway?homeTeam:awayTeam;
+    var modelFavPct=Math.round(Math.max(modelHome,modelAway)*100);
+
+    // Semáforo
+    var recC,recL;
+    var windBad=wind&&wind.speed>22;
+    if(oddsEv&&absEdge>=0.05&&bkCount>=2&&!windBad){
+      recC='rec-good';
+      recL='🟢 PICK: '+betTeam+' · Modelo '+Math.round(betModel*100)+'% vs Mkt '+Math.round(betMkt*100)+'%'+(evVal!==null?' · EV +'+(evVal*100).toFixed(1)+'¢':'');
+    } else if(modelFavPct>=62){
+      recC=oddsEv?'rec-good':'rec-tight';
+      recL=(oddsEv?'🟢':'🟡')+' '+modelFav+' · Modelo '+modelFavPct+'%'+(oddsEv?' · Mkt '+Math.round(Math.max(mktHome,mktAway)*100)+'%':' · sin odds');
+    } else if(modelFavPct>=54){
+      recC='rec-tight';
+      recL='🟡 '+modelFav+' leve · Modelo '+modelFavPct+'%';
+    } else {
+      recC='rec-avoid';
+      recL='🔴 Muy parejo · '+modelFavPct+'%-'+(100-modelFavPct)+'%';
+    }
+    if(windBad) recL+=' · ⚠️ Viento '+wind.speed+'km/h';
+
+    // Model breakdown grid
+    var breakdown=
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-top:8px">'+
+        '<div class="mlb-odd-box"><div class="mlb-odd-label">🧠 Modelo</div>'+
+          '<div class="mlb-odd-value" style="color:'+(modelHome>0.5?'#2cb67d':'#ff6b6b')+'">'+Math.round(modelHome*100)+'%</div></div>'+
+        '<div class="mlb-odd-box"><div class="mlb-odd-label">📊 Propio</div>'+
+          '<div class="mlb-odd-value" style="color:#7f5af0">'+Math.round(pred.ownHome*100)+'%</div></div>'+
+        '<div class="mlb-odd-box"><div class="mlb-odd-label">🏪 Mercado</div>'+
+          '<div class="mlb-odd-value" style="color:#aaa">'+Math.round(mktHome*100)+'%</div></div>'+
+        '<div class="mlb-odd-box"><div class="mlb-odd-label">⚡ Edge</div>'+
+          '<div class="mlb-odd-value" style="color:'+(absEdge>=0.05?'#2cb67d':absEdge>=0.02?'#ffd700':'#555')+'">'+
+            (edgeH>=0?'+':'')+Math.round(edgeH*100)+'%</div></div>'+
+      '</div>'+
+      (wind?'<div style="font-size:0.68rem;color:#555;margin-top:4px;text-align:center">'+
+        (wind.speed>22?'💨':'🌬️')+' '+wind.speed+'km/h · 🌡️ '+wind.temp+'°C'+
+        (stadium?' · 🏟️ '+stadium.name+' PF×'+stadium.pf.toFixed(2):'')+'</div>':'');
+
+    // Top batters + props
+    var homeBatters=getNPBTopBatters(homeTeam);
+    var awayBatters=getNPBTopBatters(awayTeam);
+    var gameUid=(homeTeam+awayTeam).replace(/[^a-zA-Z]/g,'').toLowerCase()+'npb';
+
+    var propsHTML='';
+    if(homeBatters.length||awayBatters.length){
+      propsHTML='<div style="background:#0a0a18;border:1px solid #e91e7a33;border-radius:12px;padding:14px;display:none" id="npbprops-'+gameUid+'">'+
+        '<div style="font-size:0.78rem;font-weight:700;color:#e91e7a;margin-bottom:10px">🎯 Props NPB</div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
+          buildNPBHitProps(homeBatters,aPitcherName,stadium,'🏠 '+homeTeam.split(' ').slice(-1)[0])+
+          buildNPBHitProps(awayBatters,hPitcherName,stadium,'✈️ '+awayTeam.split(' ').slice(-1)[0])+
+        '</div>'+
+        '<div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a2e">'+
+          '<div style="font-size:0.72rem;color:#e91e7a;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">⚡ Pitchers — 5+ Ponches</div>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
+            buildNPBKPropHTML(hPitcherName,awayTeam,'🏠 '+hPitcherName.split(' ').slice(-1)[0])+
+            buildNPBKPropHTML(aPitcherName,homeTeam,'✈️ '+aPitcherName.split(' ').slice(-1)[0])+
+          '</div>'+
+        '</div>'+
+        '<div style="font-size:0.63rem;color:#444;margin-top:8px;text-align:center">Fuente: npb.jp · No es asesoría de apuestas</div>'+
+      '</div>';
+    }
+
+    var div=document.createElement('div');
+    div.style.cssText='background:#0f0f1a;border:1px solid #2a2a4a;border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:12px';
+    div.innerHTML=
+      '<div style="font-size:0.72rem;color:#e91e7a">🇯🇵 NPB'+(game.gameTime?' · ⏰ '+game.gameTime:'')+'</div>'+
+      '<div style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+        (homeLogo?'<img src="'+homeLogo+'" style="width:22px;height:22px;object-fit:contain" onerror="this.style.display=\'none\'">':'')+
+        homeTeam+'<span style="color:#555">vs</span>'+
+        (awayLogo?'<img src="'+awayLogo+'" style="width:22px;height:22px;object-fit:contain" onerror="this.style.display=\'none\'">':'')+
+        awayTeam+
+      '</div>'+
+      '<div style="display:flex;gap:12px;font-size:0.75rem;color:#888">'+
+        '<span>'+homeAbbr+': <b style="color:#e0e0f0">'+homeRec.w+'-'+homeRec.l+'</b></span>'+
+        '<span style="color:#333">|</span>'+
+        '<span>'+awayAbbr+': <b style="color:#e0e0f0">'+awayRec.w+'-'+awayRec.l+'</b></span>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+        renderNPBPitcherCol(hPitcherName,homeTeam,true,null)+
+        renderNPBPitcherCol(aPitcherName,awayTeam,false,null)+
+      '</div>'+
+      breakdown+
+      '<div class="mlb-rec-badge '+recC+'">'+recL+'</div>'+
+      '<button id="npbpropsbtn-'+gameUid+'" class="props-btn" onclick="toggleNPBProps(\''+gameUid+'\')" style="width:100%;padding:10px;background:transparent;border:1px solid #e91e7a44;border-radius:10px;color:#e91e7a;font-size:0.82rem;font-weight:600;cursor:pointer">🎯 Ver props NPB</button>'+
+      propsHTML;
+    return div;
+  }
+
   async function buildNPBGameCard(ev, oddsData){
     var comp=ev.competitions&&ev.competitions[0];
     var homeC=((comp&&comp.competitors)||[]).find(function(c){return c.homeAway==='home';})||{};
@@ -942,13 +1102,12 @@ document.addEventListener('DOMContentLoaded', function () {
     mlbPanel.style.display='flex';mlbPanel.style.flexDirection='column';mlbPanel.style.gap='14px';
     mlbPanel.innerHTML='<div style="text-align:center;color:#555;padding:24px;font-size:0.85rem">⏳ Cargando partidos NPB...</div>';
     try{
-      var dateParam=todayStr().replace(/-/g,'');
-      var [scoreRes,oddsRes]=await Promise.all([
-        fetch(ESPN+'/baseball/jpn.npb/scoreboard?limit=20&dates='+dateParam),
+      // Load stats JSON + odds in parallel (ESPN dropped — no cubre NPB confiablemente)
+      var [npbJSON, oddsRes] = await Promise.all([
+        loadNPBStatsJSON(),
         fetch(BASE+'/sports/baseball_npb/odds/?apiKey='+API_KEY+'&regions=eu&markets=h2h&oddsFormat=decimal').catch(function(){return null;})
       ]);
-      await loadNPBStatsJSON();
-      var scoreData=scoreRes.ok?await scoreRes.json():null;
+
       var oddsData=[];
       if(oddsRes&&oddsRes.ok){
         var od=await oddsRes.json();
@@ -956,27 +1115,80 @@ document.addEventListener('DOMContentLoaded', function () {
         var rem=oddsRes.headers.get('x-requests-remaining'),used=oddsRes.headers.get('x-requests-used');
         if(rem!==null) quotaInfo.textContent='Créditos usados: '+used+' | Restantes: '+rem;
       }
-      var events=(scoreData&&scoreData.events)||[];
+
+      // Build game list from npb_probable_pitchers (generado por Python cada día)
+      var probable=npbJSON&&npbJSON.npb_probable_pitchers||{};
+      var games=buildNPBGamesFromProbable(probable);
+
+      // Fallback: if JSON not ready yet, fetch schedule directly from npb.jp
+      if(!games.length){
+        var schedMap = await fetchNPBSchedule();
+        games = buildNPBGamesFromProbable(schedMap);
+      }
+
       mlbPanel.innerHTML='';
-      if(!events.length){
-        mlbPanel.innerHTML='<div style="text-align:center;padding:24px">'+
-          '<div style="font-size:2rem;margin-bottom:12px">🇯🇵</div>'+
-          '<div style="color:#e91e7a;font-weight:700;margin-bottom:6px">NPB — Béisbol Japonés</div>'+
-          '<div style="color:#555;font-size:0.85rem">No hay partidos hoy o ESPN no tiene datos NPB disponibles.</div>'+
-          '<div style="color:#444;font-size:0.75rem;margin-top:8px">Los partidos NPB suelen ser 04:00-08:00 UTC</div>'+
+
+      if(!games.length){
+        mlbPanel.innerHTML='<div style="text-align:center;padding:32px">'+
+          '<div style="font-size:2.5rem;margin-bottom:12px">🇯🇵</div>'+
+          '<div style="color:#e91e7a;font-weight:700;font-size:1.1rem;margin-bottom:8px">NPB — Béisbol Japonés</div>'+
+          '<div style="color:#555;font-size:0.85rem;margin-bottom:6px">No hay partidos disponibles hoy.</div>'+
+          '<div style="color:#444;font-size:0.75rem">Horario NPB: 11pm–3am hora Panamá · El JSON se actualiza a las 3am y 9am</div>'+
+          '<div style="color:#333;font-size:0.72rem;margin-top:8px">Última actualización del JSON: '+(npbJSON&&npbJSON.generated_at||'pendiente')+'</div>'+
         '</div>';
         return;
       }
+
       var hdr=document.createElement('div');
       hdr.style.cssText='font-size:0.75rem;color:#e91e7a;text-transform:uppercase;letter-spacing:0.08em;padding:4px 0';
-      hdr.textContent='🇯🇵 '+events.length+' partido(s) NPB hoy';
+      hdr.textContent='🇯🇵 '+games.length+' partido(s) NPB · '+( npbJSON&&npbJSON.generated_at||todayStr());
       mlbPanel.appendChild(hdr);
-      for(var i=0;i<events.length;i++){
-        mlbPanel.appendChild(await buildNPBGameCard(events[i],oddsData));
+
+      for(var i=0;i<games.length;i++){
+        mlbPanel.appendChild(await buildNPBGameFromData(games[i],oddsData));
       }
     }catch(e){
+      console.error('[NPB panel]',e);
       mlbPanel.innerHTML='<div style="color:#ff6b6b;padding:16px">❌ Error NPB: '+e.message+'</div>';
     }
+  }
+
+  // Build normalized game objects from probable_pitchers map
+  // probable = { teamName: {pitcher:'Name', isHome:true}, ... }
+  function buildNPBGamesFromProbable(probable){
+    var games=[];
+    var seen=new Set();
+    var teams=Object.keys(probable);
+    // Match home teams with their away opponents
+    // npb.jp gives us pairs: for each home team find the away team
+    var homeTeams=teams.filter(function(t){return probable[t].isHome;});
+    var awayTeams=teams.filter(function(t){return !probable[t].isHome;});
+
+    // If we have explicit home/away pairs just zip them
+    if(homeTeams.length&&awayTeams.length){
+      var n=Math.min(homeTeams.length,awayTeams.length);
+      for(var i=0;i<n;i++){
+        var ht=homeTeams[i],at=awayTeams[i];
+        var uid=ht+at;
+        if(seen.has(uid)) continue;
+        seen.add(uid);
+        games.push({
+          homeTeam:ht, awayTeam:at,
+          hPitcher:probable[ht].pitcher||'TBD',
+          aPitcher:probable[at].pitcher||'TBD',
+          gameTime:null
+        });
+      }
+    } else {
+      // Fallback: just list all teams as individual entries
+      teams.forEach(function(t){
+        if(!seen.has(t)){
+          seen.add(t);
+          games.push({homeTeam:t,awayTeam:'—',hPitcher:probable[t].pitcher||'TBD',aPitcher:'TBD',gameTime:null});
+        }
+      });
+    }
+    return games;
   }
 
   async function fetchWindData(lat,lon){
