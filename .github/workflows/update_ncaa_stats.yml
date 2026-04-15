@@ -1,0 +1,34 @@
+name: Update NCAA Stats
+
+on:
+  schedule:
+    - cron: '0 11 * * *'   # 6am hora Panamá — una vez al día
+  workflow_dispatch:
+
+jobs:
+  fetch-ncaa:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pandas requests beautifulsoup4
+          pip install git+https://github.com/nathanblumenfeld/collegebaseball || echo "collegebaseball install failed, will use fallback"
+
+      - name: Run NCAA fetch
+        run: python fetch_ncaa_stats.py
+
+      - name: Commit ncaa_stats.json
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ncaa_stats.json
+          git diff --cached --quiet || git commit -m "chore: update ncaa_stats.json [$(date -u +%Y-%m-%dT%H:%M)]"
+          git push
