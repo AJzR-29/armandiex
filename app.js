@@ -1270,7 +1270,8 @@ document.addEventListener('DOMContentLoaded', function () {
         ps.wins=parseInt(st.wins)||0;
         ps.losses=parseInt(st.losses)||0;
         ps.ks=parseInt(st.strikeOuts)||0;
-        ps.starts=parseInt(st.gamesStarted)||0;
+        // Use gamesStarted if available, fallback to gamesPlayed for starters
+        ps.starts=parseInt(st.gamesStarted)||parseInt(st.gamesPlayed)||0;
         ps.whip=st.whip||'—';
         ps.ip=parseFloat(st.inningsPitched)||0;
         var bb=parseInt(st.baseOnBalls)||0;
@@ -1288,14 +1289,38 @@ document.addEventListener('DOMContentLoaded', function () {
 
   async function fetchPitcherStatsById(pitcherId){
     try{
-      var url=MLBAPI+'/people/'+pitcherId+'?hydrate=stats(group=[pitching],type=[statsSingleSeason],season=2026)';
-      var res=await fetch(url);
-      if(!res.ok) return null;
-      var data=await res.json();
+      // Fetch season stats + gameLog in parallel for accurate W-L record
+      var [statsRes, logRes] = await Promise.all([
+        fetch(MLBAPI+'/people/'+pitcherId+'?hydrate=stats(group=[pitching],type=[statsSingleSeason],season=2026)'),
+        fetch(MLBAPI+'/people/'+pitcherId+'/stats?stats=gameLog&group=pitching&season=2026&sportId=1')
+      ]);
+      if(!statsRes.ok) return null;
+      var data=await statsRes.json();
       var person=(data.people||[])[0];
       if(!person) return null;
       var ps=parsePitcherStats(person.stats||[]);
-      console.log('[pitcher]',person.fullName,'ERA:',ps.era,'WHIP:',ps.whip,'K/9:',ps.k9,'IP:',ps.ip);
+
+      // Get real W-L from gameLog (more accurate than season totals)
+      if(logRes.ok){
+        try{
+          var logData=await logRes.json();
+          var splits=(logData.stats&&logData.stats[0]&&logData.stats[0].splits)||[];
+          var wins=0,losses=0,starts=0;
+          splits.forEach(function(sp){
+            var st=sp.stat||{};
+            wins   += parseInt(st.wins)||0;
+            losses += parseInt(st.losses)||0;
+            starts += parseInt(st.gamesStarted)||0;
+          });
+          // Only override if gameLog gives more data than season totals
+          if(wins+losses > ps.wins+ps.losses){
+            ps.wins=wins; ps.losses=losses;
+          }
+          if(starts > ps.starts) ps.starts=starts;
+        }catch(e){}
+      }
+
+      console.log('[pitcher]',person.fullName,'ERA:',ps.era,'W-L:',ps.wins+'-'+ps.losses,'IP:',ps.ip);
       return ps;
     }catch(e){console.error('[pitcher] error',pitcherId,e);return null;}
   }
