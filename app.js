@@ -809,6 +809,8 @@ document.addEventListener('DOMContentLoaded', function () {
       recL='🔴 Muy parejo · '+modelFavPct+'%-'+(100-modelFavPct)+'%';
     }
     if(windBad) recL+=' · ⚠️ Viento '+wind.speed+'km/h';
+    if(lineup&&!lineup.homeConfirmed&&!lineup.awayConfirmed) recL+=' · ⏳ Lineups no confirmados';
+    else if(lineup&&(!lineup.homeConfirmed||!lineup.awayConfirmed)) recL+=' · ⏳ Un lineup pendiente';
 
     var breakdown=
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-top:8px">'+
@@ -951,6 +953,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     if(windBad) recL+=' · ⚠️ Viento '+wind.speed+'km/h';
+    if(lineup&&!lineup.homeConfirmed&&!lineup.awayConfirmed) recL+=' · ⏳ Lineups no confirmados';
+    else if(lineup&&(!lineup.homeConfirmed||!lineup.awayConfirmed)) recL+=' · ⏳ Un lineup pendiente';
 
     // Top batters for props
     var homeBatters=getNPBTopBatters(homeTeam);
@@ -1468,11 +1472,13 @@ document.addEventListener('DOMContentLoaded', function () {
       var res=await fetch(url);
       if(!res.ok) return null;
       var data=await res.json();
-      var result={home:[],away:[]};
+      var result={home:[],away:[],homeConfirmed:false,awayConfirmed:false};
       ['home','away'].forEach(function(side){
         var team=data.teams&&data.teams[side];
         if(!team) return;
         var battingOrder=team.battingOrder||[];
+        // Lineup is confirmed if battingOrder has 9 players
+        if(battingOrder.length>=9) result[side+'Confirmed']=true;
         battingOrder.forEach(function(pid){
           var pl=team.players&&team.players['ID'+pid];
           if(!pl) return;
@@ -1486,9 +1492,7 @@ document.addEventListener('DOMContentLoaded', function () {
             ops:s.ops||'—',
             hr:s.homeRuns||0,
             rbi:s.rbi||0,
-            bb:bb,
-            ab:ab,
-            h:h,
+            bb:bb, ab:ab, h:h,
             bbRate:pa>5?(bb/pa*100).toFixed(0)+'%':'—'
           });
         });
@@ -2221,12 +2225,20 @@ document.addEventListener('DOMContentLoaded', function () {
           '<div class="mlb-odd-value" style="color:'+(absEdge>=0.05?'#2cb67d':absEdge>=0.02?'#ffd700':'#555')+'">'+
             (edgeH>=0?'+':'')+Math.round(edgeH*100)+'%</div></div>'+
       '</div>'+
-      '<div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:center">'+
-        'Ratio: '+Math.round(_r.own*100)+'% propio/'+Math.round(_r.mkt*100)+'% mkt'+
-        (_hasPitcher?' · ✅ SP':' · ⚠️ TBD')+
-        (hBullAdj>0.005?' · 🔧+'+Math.round(hBullAdj*100)+'%':hBullAdj<-0.005?' · 😤'+Math.round(hBullAdj*100)+'%':'')+
-        (hInjAdj>0?' · 🤕-'+Math.round(hInjAdj*100)+'%':'')+
-      '</div>'+
+      (function(){
+        var lineupOK=lineup&&lineup.homeConfirmed&&lineup.awayConfirmed;
+        var dataScore=(_hasPitcher?1:0)+(_hasFG?1:0)+(lineupOK?1:0)+(_hasOdds?1:0);
+        var confC=dataScore>=3?'#10b981':dataScore>=2?'#f59e0b':'#ef4444';
+        var confT=dataScore>=3?'🟢 Datos completos':dataScore>=2?'🟡 Datos parciales':'🔴 Datos incompletos';
+        return '<div style="font-size:0.65rem;color:'+confC+';margin-top:4px;text-align:center;font-weight:600">'+
+          confT+' · '+
+          'Ratio: '+Math.round(_r.own*100)+'%/'+Math.round(_r.mkt*100)+'%'+
+          (_hasPitcher?' · SP✅':' · SP⚠️')+
+          (lineupOK?' · LN✅':' · LN⏳')+
+          (hBullAdj>0.005?' · Bull+'+Math.round(hBullAdj*100)+'%':hBullAdj<-0.005?' · Bull'+Math.round(hBullAdj*100)+'%':'')+
+          (hInjAdj>0?' · IL-'+Math.round(hInjAdj*100)+'%':'')+
+        '</div>';
+      })()+
       (umpire?'<div style="font-size:0.68rem;color:#555;margin-top:2px;text-align:center">👨‍⚖️ '+umpire.name+(umpire.kFactor!==0?' ('+( umpire.kFactor>0?'+':'')+Math.round(umpire.kFactor*100)+'% Ks)':'')+'</div>':'')+
       (homeBullpen&&homeBullpen.avgERA?'<div style="font-size:0.68rem;color:#555;margin-top:2px;text-align:center">🔧 Bullpen: '+homeAbbr+' ERA '+homeBullpen.avgERA+' · '+awayAbbr+' ERA '+(awayBullpen&&awayBullpen.avgERA?awayBullpen.avgERA:'—')+'</div>':'');
 
@@ -2363,7 +2375,17 @@ document.addEventListener('DOMContentLoaded', function () {
     var div=document.createElement('div');
     div.className='game-card-wrap';
     div.innerHTML=
-      '<div style="font-family:DM Mono,monospace;font-size:0.68rem;color:var(--muted)">⏰ '+formatGameTime(ev.date)+'</div>'+
+      '<div style="font-family:DM Mono,monospace;font-size:0.68rem;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'+
+        '<span>⏰ '+formatGameTime(ev.date)+'</span>'+
+        '<span style="display:flex;gap:6px">'+
+          (lineup&&lineup.homeConfirmed
+            ?'<span style="color:#10b981;font-size:0.63rem">✅ Lineup local</span>'
+            :'<span style="color:#f59e0b;font-size:0.63rem">⏳ Lineup local TBD</span>')+
+          (lineup&&lineup.awayConfirmed
+            ?'<span style="color:#10b981;font-size:0.63rem">✅ Visita</span>'
+            :'<span style="color:#f59e0b;font-size:0.63rem">⏳ Visita TBD</span>')+
+        '</span>'+
+      '</div>'+
       '<div style="font-family:Syne,sans-serif;font-size:1.05rem;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap;letter-spacing:-0.02em">'+
         (homeLogo?'<img src="'+homeLogo+'" style="width:22px;height:22px;object-fit:contain" onerror="this.style.display=\'none\'">':'')+
         homeTeam+'<span style="color:#555">vs</span>'+
