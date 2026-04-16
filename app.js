@@ -369,18 +369,24 @@ document.addEventListener('DOMContentLoaded', function () {
     return html;
   }
 
-  // ── Splits zurdo/derecho del pitcher ─────────────────────────────────
+  // ── Splits zurdo/derecho + home/away del pitcher ─────────────────────
   var pitcherSplitsCache={};
   async function fetchPitcherSplits(pitcherId){
     if(!pitcherId) return null;
     if(pitcherSplitsCache[pitcherId]!==undefined) return pitcherSplitsCache[pitcherId];
     try{
-      var url=MLBAPI+'/people/'+pitcherId+'?hydrate=stats(group=[pitching],type=[statSplits],sitCodes=[vl,vr],season=2026)';
+      // Fetch L/R splits AND home/away splits in parallel
+      var url=MLBAPI+'/people/'+pitcherId+'?hydrate=stats(group=[pitching],type=[statSplits],sitCodes=[vl,vr,h,a],season=2026)';
       var res=await fetch(url);
       if(!res.ok){pitcherSplitsCache[pitcherId]=null;return null;}
       var data=await res.json();
       var person=(data.people||[])[0];
-      var splits={vsL:{avg:'—',k9:'—',bb9:'—',ops:'—'},vsR:{avg:'—',k9:'—',bb9:'—',ops:'—'}};
+      var splits={
+        vsL:{avg:'—',k9:'—',bb9:'—',ops:'—'},
+        vsR:{avg:'—',k9:'—',bb9:'—',ops:'—'},
+        home:{era:'—',whip:'—',k9:'—',ip:0},
+        away:{era:'—',whip:'—',k9:'—',ip:0}
+      };
       ((person&&person.stats)||[]).forEach(function(s){
         (s.splits||[]).forEach(function(sp){
           var sit=sp.split&&sp.split.code;
@@ -390,6 +396,8 @@ document.addEventListener('DOMContentLoaded', function () {
           var bb9=ip>0?((parseInt(st.baseOnBalls)||0)/ip*9).toFixed(1):'—';
           if(sit==='vl') splits.vsL={avg:st.avg||'—',k9:k9,bb9:bb9,ops:st.ops||'—',ip:ip};
           if(sit==='vr') splits.vsR={avg:st.avg||'—',k9:k9,bb9:bb9,ops:st.ops||'—',ip:ip};
+          if(sit==='h')  splits.home={era:st.era||'—',whip:st.whip||'—',k9:k9,ip:ip};
+          if(sit==='a')  splits.away={era:st.era||'—',whip:st.whip||'—',k9:k9,ip:ip};
         });
       });
       pitcherSplitsCache[pitcherId]=splits; return splits;
@@ -402,29 +410,55 @@ document.addEventListener('DOMContentLoaded', function () {
     if(!teamId) return null;
     if(bullpenCache[teamId]!==undefined) return bullpenCache[teamId];
     try{
-      var url=MLBAPI+'/teams/'+teamId+'/roster?rosterType=active&season=2026&hydrate=person(stats(group=[pitching],type=[statsSingleSeason]))';
-      var res=await fetch(url);
-      if(!res.ok){bullpenCache[teamId]=null;return null;}
-      var data=await res.json();
+      // Get roster + recent game log (last 3 days) in parallel
+      var d3=new Date(); d3.setDate(d3.getDate()-3);
+      var start3d=d3.toISOString().slice(0,10);
+      var [rosterRes,logRes]=await Promise.all([
+        fetch(MLBAPI+'/teams/'+teamId+'/roster?rosterType=active&season=2026&hydrate=person(stats(group=[pitching],type=[statsSingleSeason]))'),
+        fetch(MLBAPI+'/teams/'+teamId+'/stats?stats=gameLog&group=pitching&season=2026&startDate='+start3d+'&endDate='+todayStr())
+      ]);
+      if(!rosterRes.ok){bullpenCache[teamId]=null;return null;}
+      var data=await rosterRes.json();
+
+      // Build reliever list from roster
       var relievers=[];
       (data.roster||[]).forEach(function(r){
         if(r.position&&r.position.abbreviation==='P'){
           var p=r.person||{};
-          var ps={era:'—',whip:'—',k9:'—',ip:0};
+          var ps={era:'—',whip:'—',k9:'—',ip:0,id:p.id,name:p.fullName||'—'};
           ((p.stats||[])[0]&&(p.stats[0].splits||[])[0]&&(function(st){
             var ip=parseFloat(st.inningsPitched)||0;
             ps.era=st.era||'—'; ps.whip=st.whip||'—'; ps.ip=ip;
             if(ip>0) ps.k9=((parseInt(st.strikeOuts)||0)/ip*9).toFixed(1);
           })((p.stats[0].splits[0].stat||{})));
-          // Only relievers (GS=0 or few starts)
-          if(ps.ip>0&&ps.ip<20) relievers.push({name:p.fullName||'—',era:ps.era,whip:ps.whip,k9:ps.k9,ip:ps.ip});
+          if(ps.ip>0&&ps.ip<20) relievers.push(ps);
         }
       });
-      relievers.sort(function(a,b){
-        var ea=parseFloat(a.era)||99,eb=parseFloat(b.era)||99;
-        return ea-eb;
-      });
-      var result={top3:relievers.slice(0,3),avgERA:null};
+      relievers.sort(function(a,b){return (parseFloat(a.era)||99)-(parseFloat(b.era)||99);});
+
+      // Recent usage: IP thrown in last 3 days per pitcher
+      var recentIP={};
+      var recentPitchers=0;
+      if(logRes.ok){
+        try{
+          var logData=await logRes.json();
+          ((logData.stats&&logData.stats[0]&&logData.stats[0].splits)||[]).forEach(function(sp){
+            var pid=sp.player&&sp.player.id;
+            var ip=parseFloat((sp.stat&&sp.stat.inningsPitched)||0);
+            if(pid&&ip>0){
+              recentIP[pid]=(recentIP[pid]||0)+ip;
+              recentPitchers++;
+            }
+          });
+        }catch(e){}
+      }
+
+      // Total IP thrown by bullpen in last 3 days
+      var recentBullpenIP=Object.values(recentIP).reduce(function(s,v){return s+v;},0);
+      // Fatigue score: 0=fresh, 1=very tired (>8 IP in 3 days = very tired bullpen)
+      var fatigue=Math.min(recentBullpenIP/8,1);
+
+      var result={top3:relievers.slice(0,3),avgERA:null,recentIP:recentBullpenIP,fatigue:fatigue};
       if(relievers.length){
         var eras=relievers.map(function(r){return parseFloat(r.era)||0;}).filter(function(e){return e>0;});
         result.avgERA=eras.length?(eras.reduce(function(a,b){return a+b;},0)/eras.length).toFixed(2):null;
@@ -441,6 +475,29 @@ document.addEventListener('DOMContentLoaded', function () {
     'Marvin Hudson':+0.02,'Mark Carlson':+0.02,'Brian Knight':+0.03,
     'Dan Iassogna':+0.03,'Ryan Blakney':+0.02,'Junior Valentine':-0.02
   };
+  // ── Injuries / IL list ────────────────────────────────────────────────
+  var injuryCache={};
+  async function fetchInjuries(teamId){
+    if(!teamId) return [];
+    if(injuryCache[teamId]!==undefined) return injuryCache[teamId];
+    try{
+      var url=MLBAPI+'/teams/'+teamId+'/roster?rosterType=injured&season=2026';
+      var res=await fetch(url);
+      if(!res.ok){injuryCache[teamId]=[];return [];}
+      var data=await res.json();
+      var injured=[];
+      (data.roster||[]).forEach(function(r){
+        var p=r.person||{};
+        var pos=r.position&&r.position.abbreviation||'';
+        // Flag key offensive positions (not pitchers)
+        if(['C','1B','2B','3B','SS','LF','CF','RF','DH'].indexOf(pos)>=0){
+          injured.push({name:p.fullName||'—',pos:pos,status:r.status||'IL'});
+        }
+      });
+      injuryCache[teamId]=injured; return injured;
+    }catch(e){injuryCache[teamId]=[];return [];}
+  }
+
   async function fetchUmpire(gameId){
     if(!gameId) return null;
     try{
@@ -1245,6 +1302,19 @@ document.addEventListener('DOMContentLoaded', function () {
     '</div>';
   }
 
+  function dynamicRatio(hasPitcher, hasFGData, hasOdds, isMLB){
+    if(!hasOdds) return {own:0.90, mkt:0.10};
+    if(isMLB){
+      if(hasPitcher && hasFGData) return {own:0.70, mkt:0.30};
+      if(hasPitcher)              return {own:0.62, mkt:0.38};
+      return                            {own:0.45, mkt:0.55};
+    } else {
+      if(hasPitcher && hasFGData) return {own:0.65, mkt:0.35};
+      if(hasPitcher)              return {own:0.55, mkt:0.45};
+      return                            {own:0.40, mkt:0.60};
+    }
+  }
+
   async function fetchWindData(lat,lon){
     var key=lat+','+lon;
     if(windCache[key]) return windCache[key];
@@ -1767,7 +1837,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ── Fetch paralelo: lineup + team stats + pitcher fatigue + splits + bullpen + umpire ──
     var [lineup,homeRecent,awayRecent,homeFatigue,awayFatigue,
-         hpSplits,apSplits,homeBullpen,awayBullpen,umpire]=await Promise.all([
+         hpSplits,apSplits,homeBullpen,awayBullpen,umpire,
+         homeInjuries,awayInjuries]=await Promise.all([
       gameId?fetchMLBLineup(gameId):Promise.resolve(null),
       homeId?fetchMLBTeamRecentGames(homeId):Promise.resolve(null),
       awayId?fetchMLBTeamRecentGames(awayId):Promise.resolve(null),
@@ -1777,7 +1848,9 @@ document.addEventListener('DOMContentLoaded', function () {
       ap.id?fetchPitcherSplits(ap.id):Promise.resolve(null),
       homeId?fetchBullpen(homeId):Promise.resolve(null),
       awayId?fetchBullpen(awayId):Promise.resolve(null),
-      gameId?fetchUmpire(gameId):Promise.resolve(null)
+      gameId?fetchUmpire(gameId):Promise.resolve(null),
+      homeId?fetchInjuries(homeId):Promise.resolve([]),
+      awayId?fetchInjuries(awayId):Promise.resolve([])
     ]);
 
     // ── FanGraphs / Statcast desde JSON local ─────────────────────────
@@ -1980,10 +2053,52 @@ document.addEventListener('DOMContentLoaded', function () {
     var hpFGdata=hpFG||{}; if(hpFG){hpFGdata.xFIP=hpFG.xFIP;}
     var apFGdata=apFG||{}; if(apFG){apFGdata.xFIP=apFG.xFIP;}
 
-    var hPitchScore = scorePitcher(Object.assign({},hp,hpFGdata), hpSplits, homeFatigue, umpKF);
-    var aPitchScore = scorePitcher(Object.assign({},ap,apFGdata), apSplits, awayFatigue, umpKF);
+    // ── Pass home/away context to scorePitcher ───────────────
+    var hpWithSplitsHA = Object.assign({},hp,hpFGdata,{
+      // Use home ERA if pitching at home, away ERA if pitching away
+      era: (isHome&&hpSplits&&hpSplits.home&&hpSplits.home.era!=='—')?hpSplits.home.era:
+           (!isHome&&hpSplits&&hpSplits.away&&hpSplits.away.era!=='—')?hpSplits.away.era:
+           (hpFGdata&&hpFGdata.era)||hp.era,
+      k9:  (isHome&&hpSplits&&hpSplits.home&&hpSplits.home.k9!=='—')?hpSplits.home.k9:
+           (!isHome&&hpSplits&&hpSplits.away&&hpSplits.away.k9!=='—')?hpSplits.away.k9:
+           hp.k9
+    });
+    var apWithSplitsHA = Object.assign({},ap,apFGdata,{
+      era: (!isHome&&apSplits&&apSplits.home&&apSplits.home.era!=='—')?apSplits.home.era:
+           (isHome&&apSplits&&apSplits.away&&apSplits.away.era!=='—')?apSplits.away.era:
+           (apFGdata&&apFGdata.era)||ap.era,
+      k9:  (!isHome&&apSplits&&apSplits.home&&apSplits.home.k9!=='—')?apSplits.home.k9:
+           (isHome&&apSplits&&apSplits.away&&apSplits.away.k9!=='—')?apSplits.away.k9:
+           ap.k9
+    });
+
+    var hPitchScore = scorePitcher(hpWithSplitsHA, hpSplits, homeFatigue, umpKF);
+    var aPitchScore = scorePitcher(apWithSplitsHA, apSplits, awayFatigue, umpKF);
     var hOffScore   = scoreOffense(homeTeam, homeLineupAgg, homeRecent, homeGP);
     var aOffScore   = scoreOffense(awayTeam, awayLineupAgg, awayRecent, awayGP);
+
+    // ── Bullpen adjustment (innings pitched last 3 days) ─────
+    // Fresh bullpen = small boost, tired bullpen = penalty
+    var LEAGUE_AVG_BULL_ERA = 4.20;
+    var hBullAdj = 0;
+    var aBullAdj = 0;
+    if(homeBullpen){
+      var hBullERA = parseFloat(homeBullpen.avgERA)||LEAGUE_AVG_BULL_ERA;
+      var hBullFatigue = homeBullpen.fatigue||0; // 0=fresh, 1=exhausted
+      hBullAdj = ((LEAGUE_AVG_BULL_ERA - hBullERA) * 0.015)  // quality
+               - (hBullFatigue * 0.025);                       // fatigue penalty
+    }
+    if(awayBullpen){
+      var aBullERA = parseFloat(awayBullpen.avgERA)||LEAGUE_AVG_BULL_ERA;
+      var aBullFatigue = awayBullpen.fatigue||0;
+      aBullAdj = ((LEAGUE_AVG_BULL_ERA - aBullERA) * 0.015)
+               - (aBullFatigue * 0.025);
+    }
+
+    // ── Injury adjustment ────────────────────────────────────
+    // Each key position on IL = small offensive penalty
+    var hInjAdj = homeInjuries ? Math.min(homeInjuries.length * 0.008, 0.04) : 0;
+    var aInjAdj = awayInjuries ? Math.min(awayInjuries.length * 0.008, 0.04) : 0;
 
     // Ballpark factor
     var pfAdj=stadium?(stadium.pf-1)*0.035:0;
@@ -1992,9 +2107,12 @@ document.addEventListener('DOMContentLoaded', function () {
     var homeAdv=0.028;
 
     // ── Score propio por equipo ───────────────────────────────
-    // Local: su ofensiva vs pitcher visitante + pitcher local vs ofensiva visitante
-    var homeOwnScore = (hOffScore*0.50 + (1-aPitchScore)*0.50) + pfAdj + homeAdv;
-    var awayOwnScore = (aOffScore*0.50 + (1-hPitchScore)*0.50) - pfAdj;
+    var homeOwnScore = (hOffScore*0.50 + (1-aPitchScore)*0.50)
+                     + pfAdj + homeAdv + hBullAdj - aBullAdj
+                     - hInjAdj + aInjAdj;
+    var awayOwnScore = (aOffScore*0.50 + (1-hPitchScore)*0.50)
+                     - pfAdj + aBullAdj - hBullAdj
+                     - aInjAdj + hInjAdj;
 
     // Normalizar a probabilidad
     var ownTotal=homeOwnScore+awayOwnScore;
@@ -2004,8 +2122,12 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Mercado sin vig ───────────────────────────────────────
     // Ya mktHome/mktAway están normalizados (sin vig aplicado arriba)
 
-    // ── MODELO FINAL 65% propio + 35% mercado ────────────────
-    var modelHome=clamp(ownProbHome*0.65 + mktHome*0.35, 0.05, 0.95);
+    // ── MODELO FINAL — ratio dinámico ────────────────────────
+    var _hasPitcher=hp.name!=='TBD'&&ap.name!=='TBD';
+    var _hasFG=!!(hpFG||apFG);
+    var _hasOdds=!!(oddsEv&&bkCount>=2);
+    var _r=dynamicRatio(_hasPitcher,_hasFG,_hasOdds,true);
+    var modelHome=clamp(ownProbHome*_r.own + mktHome*_r.mkt, 0.05, 0.95);
     var modelAway=1-modelHome;
     var edgeH=modelHome-mktHome,edgeA=modelAway-mktAway;
 
@@ -2058,6 +2180,10 @@ document.addEventListener('DOMContentLoaded', function () {
     if(awayFatigue!==null&&awayFatigue<=3) alerts.push('😴 '+ap.name.split(' ').slice(-1)[0]+' cansado');
     if(homeBullpen&&homeBullpen.avgERA&&parseFloat(homeBullpen.avgERA)>5.0) alerts.push('🚨 Bullpen local débil');
     if(awayBullpen&&awayBullpen.avgERA&&parseFloat(awayBullpen.avgERA)>5.0) alerts.push('🚨 Bullpen visita débil');
+    if(homeBullpen&&homeBullpen.fatigue>0.6) alerts.push('😤 Bullpen local agotado ('+homeBullpen.recentIP.toFixed(1)+'IP/3d)');
+    if(awayBullpen&&awayBullpen.fatigue>0.6) alerts.push('😤 Bullpen visita agotado ('+awayBullpen.recentIP.toFixed(1)+'IP/3d)');
+    if(homeInjuries&&homeInjuries.length>=2) alerts.push('🤕 '+homeAbbr+' '+homeInjuries.length+' titulares en IL');
+    if(awayInjuries&&awayInjuries.length>=2) alerts.push('🤕 '+awayAbbr+' '+awayInjuries.length+' titulares en IL');
 
     var alertStr=alerts.length?' · '+alerts.join(' · '):'';
 
@@ -2095,7 +2221,13 @@ document.addEventListener('DOMContentLoaded', function () {
           '<div class="mlb-odd-value" style="color:'+(absEdge>=0.05?'#2cb67d':absEdge>=0.02?'#ffd700':'#555')+'">'+
             (edgeH>=0?'+':'')+Math.round(edgeH*100)+'%</div></div>'+
       '</div>'+
-      (umpire?'<div style="font-size:0.68rem;color:#555;margin-top:4px;text-align:center">👨‍⚖️ HP Umpire: '+umpire.name+(umpire.kFactor!==0?' ('+( umpire.kFactor>0?'+':'')+Math.round(umpire.kFactor*100)+'% Ks)':'')+'</div>':'')+
+      '<div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:center">'+
+        'Ratio: '+Math.round(_r.own*100)+'% propio/'+Math.round(_r.mkt*100)+'% mkt'+
+        (_hasPitcher?' · ✅ SP':' · ⚠️ TBD')+
+        (hBullAdj>0.005?' · 🔧+'+Math.round(hBullAdj*100)+'%':hBullAdj<-0.005?' · 😤'+Math.round(hBullAdj*100)+'%':'')+
+        (hInjAdj>0?' · 🤕-'+Math.round(hInjAdj*100)+'%':'')+
+      '</div>'+
+      (umpire?'<div style="font-size:0.68rem;color:#555;margin-top:2px;text-align:center">👨‍⚖️ '+umpire.name+(umpire.kFactor!==0?' ('+( umpire.kFactor>0?'+':'')+Math.round(umpire.kFactor*100)+'% Ks)':'')+'</div>':'')+
       (homeBullpen&&homeBullpen.avgERA?'<div style="font-size:0.68rem;color:#555;margin-top:2px;text-align:center">🔧 Bullpen: '+homeAbbr+' ERA '+homeBullpen.avgERA+' · '+awayAbbr+' ERA '+(awayBullpen&&awayBullpen.avgERA?awayBullpen.avgERA:'—')+'</div>':'');
 
     // ── Pitcher columna ───────────────────────────────────────
@@ -2226,7 +2358,8 @@ document.addEventListener('DOMContentLoaded', function () {
       homeLineupAgg:homeLineupAgg,awayLineupAgg:awayLineupAgg,
       mlbHit:mlbHit,homeId:homeId,awayId:awayId,
       homeGP:homeGP,awayGP:awayGP,stadium:stadium,
-      hpSplits:hpSplits,apSplits:apSplits,umpire:umpire};
+      hpSplits:hpSplits,apSplits:apSplits,umpire:umpire,
+      homeInjuries:homeInjuries,awayInjuries:awayInjuries};
     var div=document.createElement('div');
     div.className='game-card-wrap';
     div.innerHTML=
@@ -2543,7 +2676,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Reset caches on league switch
     mlbScheduleCache=null; mlbHittersCache=null;
-    pitcherSplitsCache={}; bullpenCache={};
+    pitcherSplitsCache={}; bullpenCache={}; injuryCache={};
     propsDataStore={};
     npbScheduleCache=null; npbStatsJSON=null;
 
